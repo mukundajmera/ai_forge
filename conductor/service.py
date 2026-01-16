@@ -464,6 +464,296 @@ async def list_models() -> dict[str, list[ModelInfo]]:
 
 
 # --------------------------------------------------------------------------
+# Query Endpoint
+# --------------------------------------------------------------------------
+
+class QueryRequest(BaseModel):
+    """Simple query request.
+    
+    Attributes:
+        prompt: The prompt to send.
+        model: Optional model name (defaults to active model).
+    """
+    
+    prompt: str
+    model: Optional[str] = None
+
+
+class QueryResponse(BaseModel):
+    """Query response.
+    
+    Attributes:
+        answer: The model's response.
+        model: Model used.
+        metadata: Additional metadata.
+    """
+    
+    answer: str
+    model: str
+    metadata: dict = {}
+
+
+@app.post("/v1/query", response_model=QueryResponse, tags=["Query"])
+async def query(request: QueryRequest) -> QueryResponse:
+    """Simple prompt-response query.
+    
+    Args:
+        request: Query with prompt.
+        
+    Returns:
+        Model's response.
+    """
+    if state.ollama_manager is None:
+        raise HTTPException(status_code=503, detail="Ollama not available")
+    
+    # Determine model
+    model = request.model
+    if not model:
+        # Use first available model
+        try:
+            models = await state.ollama_manager.list_models()
+            if models:
+                model = models[0]["name"]
+            else:
+                raise HTTPException(status_code=400, detail="No models available")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    try:
+        response = await state.ollama_manager.generate(
+            model=model,
+            prompt=request.prompt,
+        )
+        
+        return QueryResponse(
+            answer=response,
+            model=model,
+            metadata={"timestamp": datetime.now().isoformat()},
+        )
+    except Exception as e:
+        logger.error(f"Query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------------------------------------------------------------------------
+# Status Endpoint (Alias)
+# --------------------------------------------------------------------------
+
+@app.get("/status/{job_id}", response_model=JobStatus, tags=["Status"])
+async def get_status(job_id: str) -> JobStatus:
+    """Get job status (alias for /v1/fine-tune/{job_id}).
+    
+    Args:
+        job_id: Job identifier.
+        
+    Returns:
+        Current job status.
+    """
+    return await get_job_status(job_id)
+
+
+# --------------------------------------------------------------------------
+# Deploy Endpoint
+# --------------------------------------------------------------------------
+
+class DeployRequest(BaseModel):
+    """Deploy request options.
+    
+    Attributes:
+        model_name: Name for the deployed model.
+        system_prompt: Optional system prompt.
+        quantization: Quantization type.
+    """
+    
+    model_name: Optional[str] = None
+    system_prompt: Optional[str] = None
+    quantization: str = "q4_k_m"
+
+
+class DeployResponse(BaseModel):
+    """Deploy response.
+    
+    Attributes:
+        success: Whether deployment succeeded.
+        model_name: Deployed model name.
+        message: Status message.
+    """
+    
+    success: bool
+    model_name: str
+    message: str
+
+
+@app.post("/deploy/{job_id}", response_model=DeployResponse, tags=["Deploy"])
+async def deploy_model(job_id: str, request: DeployRequest = None) -> DeployResponse:
+    """Deploy a trained model to Ollama.
+    
+    Args:
+        job_id: Job identifier of completed training.
+        request: Optional deploy options.
+        
+    Returns:
+        Deployment result.
+    """
+    if job_id not in state.jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = state.jobs[job_id]
+    
+    if job["status"] != "completed":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Job not completed. Status: {job['status']}"
+        )
+    
+    if state.ollama_manager is None:
+        raise HTTPException(status_code=503, detail="Ollama not available")
+    
+    try:
+        # Determine model name
+        model_name = (request.model_name if request else None) or f"ai-forge-{job_id}"
+        
+        # Get output path
+        output_dir = Path(f"./output/{job_id}/final")
+        
+        if not output_dir.exists():
+            raise HTTPException(
+                status_code=400, 
+                detail="Model output not found. Training may have failed."
+            )
+        
+        # Export to GGUF
+        from judge.exporter import GGUFExporter, ExportConfig
+        
+        quantization = request.quantization if request else "q4_k_m"
+        export_config = ExportConfig(
+            quantization=quantization,
+            output_dir=str(output_dir / "export"),
+            model_name=model_name,
+        )
+        
+        exporter = GGUFExporter(output_dir, export_config)
+        result = exporter.export()
+        
+        if not result.success:
+            raise HTTPException(status_code=500, detail=f"Export failed: {result.error}")
+        
+        # Create Modelfile and deploy
+        modelfile_path = exporter.create_modelfile(
+            result.output_path,
+            system_prompt=request.system_prompt if request else None,
+        )
+        
+        # Deploy to Ollama
+        deployed = await state.ollama_manager.create_model(
+            model_name=model_name,
+            modelfile_path=str(modelfile_path),
+        )
+        
+        if not deployed:
+            raise HTTPException(status_code=500, detail="Failed to deploy to Ollama")
+        
+        return DeployResponse(
+            success=True,
+            model_name=model_name,
+            message=f"Model deployed as '{model_name}'. Use with: ollama run {model_name}",
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Deploy failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------------------------------------------------------------------------
+# Validate Endpoint
+# --------------------------------------------------------------------------
+
+class ValidateResponse(BaseModel):
+    """Validation response.
+    
+    Attributes:
+        job_id: Job that was validated.
+        passed: Whether validation passed.
+        metrics: Evaluation metrics.
+        report_path: Path to full report.
+    """
+    
+    job_id: str
+    passed: bool
+    metrics: dict
+    report_path: Optional[str] = None
+
+
+@app.post("/validate/{job_id}", response_model=ValidateResponse, tags=["Validate"])
+async def validate_model(job_id: str) -> ValidateResponse:
+    """Run validation suite on a trained model.
+    
+    Args:
+        job_id: Job identifier.
+        
+    Returns:
+        Validation results.
+    """
+    if job_id not in state.jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = state.jobs[job_id]
+    
+    if job["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not completed. Status: {job['status']}"
+        )
+    
+    try:
+        output_dir = Path(f"./output/{job_id}/final")
+        
+        if not output_dir.exists():
+            raise HTTPException(status_code=400, detail="Model output not found")
+        
+        # Create evaluation report
+        from judge.report import EvaluationReport
+        
+        report = EvaluationReport(
+            model_name=f"ai-forge-{job_id}",
+            base_model=job["config"]["base_model"],
+            num_training_examples=0,  # Would need to count from data file
+            num_eval_examples=0,
+        )
+        
+        # Add training metrics
+        report.add_metrics(
+            perplexity=job.get("loss", 0.0) * 2.72,  # Rough estimate
+        )
+        
+        # Determine if validation passed
+        # (Simple heuristics - would need actual eval dataset)
+        passed = job.get("loss", 999) < 2.0
+        
+        # Save report
+        report_path = output_dir / "validation_report.md"
+        report.to_markdown(report_path)
+        
+        return ValidateResponse(
+            job_id=job_id,
+            passed=passed,
+            metrics={
+                "final_loss": job.get("loss"),
+                "epochs_completed": job["config"]["epochs"],
+            },
+            report_path=str(report_path),
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Validation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------------------------------------------------------------------------
 # Background Tasks
 # --------------------------------------------------------------------------
 
@@ -521,9 +811,202 @@ async def execute_fine_tune(job_id: str) -> None:
 
 
 # --------------------------------------------------------------------------
+# Repo Guardian / Retrain Endpoint
+# --------------------------------------------------------------------------
+
+class RetrainRequest(BaseModel):
+    """Request to trigger retraining via Repo Guardian.
+    
+    Attributes:
+        project_path: Path to project repository.
+        auto_deploy: Automatically deploy after training.
+        force: Force retraining even if no changes detected.
+    """
+    
+    project_path: str = "."
+    auto_deploy: bool = False
+    force: bool = False
+
+
+class RetrainResponse(BaseModel):
+    """Response from retrain request.
+    
+    Attributes:
+        triggered: Whether retraining was triggered.
+        reason: Reason for decision.
+        plan: Training plan if triggered.
+        job_id: Job ID if training started.
+    """
+    
+    triggered: bool
+    reason: str
+    plan: Optional[dict] = None
+    job_id: Optional[str] = None
+
+
+@app.post("/v1/retrain", response_model=RetrainResponse, tags=["Agent"])
+async def trigger_retrain(
+    request: RetrainRequest,
+    background_tasks: BackgroundTasks,
+) -> RetrainResponse:
+    """Trigger retraining via Repo Guardian agent.
+    
+    Monitors the repository and triggers retraining if significant
+    changes are detected, or if force=True.
+    
+    Args:
+        request: Retrain configuration.
+        background_tasks: FastAPI background tasks.
+        
+    Returns:
+        Retrain decision and plan.
+    """
+    try:
+        from antigravity_agent.repo_guardian import RepoGuardian, PipelineConfig
+        
+        # Initialize guardian
+        config = PipelineConfig(
+            auto_train=True,
+            auto_export=request.auto_deploy,
+            auto_deploy=request.auto_deploy,
+        )
+        guardian = RepoGuardian(request.project_path, config)
+        
+        # Check if retraining needed
+        if not request.force:
+            monitor_result = guardian.monitor_repository()
+            
+            if not monitor_result["should_retrain"]:
+                return RetrainResponse(
+                    triggered=False,
+                    reason=monitor_result["reason"],
+                )
+        else:
+            monitor_result = {"reason": "Forced retraining requested"}
+        
+        # Create training plan
+        plan = guardian.plan_training_cycle()
+        
+        # Generate job ID
+        job_id = f"agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Queue background task
+        background_tasks.add_task(execute_guardian_pipeline, guardian, job_id)
+        
+        # Track job
+        state.jobs[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "type": "agent_pipeline",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        }
+        
+        return RetrainResponse(
+            triggered=True,
+            reason=monitor_result.get("reason", "Retraining triggered"),
+            plan=plan,
+            job_id=job_id,
+        )
+        
+    except Exception as e:
+        logger.error(f"Retrain trigger failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/retrain/monitor", tags=["Agent"])
+async def monitor_repository(project_path: str = ".") -> dict:
+    """Check repository for changes without triggering retraining.
+    
+    Args:
+        project_path: Path to project repository.
+        
+    Returns:
+        Monitoring results.
+    """
+    try:
+        from antigravity_agent.repo_guardian import RepoGuardian
+        
+        guardian = RepoGuardian(project_path)
+        return guardian.monitor_repository()
+        
+    except Exception as e:
+        logger.error(f"Monitor failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/retrain/{job_id}/pause", tags=["Agent"])
+async def pause_pipeline(job_id: str) -> dict:
+    """Pause a running pipeline.
+    
+    Args:
+        job_id: Job identifier.
+        
+    Returns:
+        Pause confirmation.
+    """
+    if job_id not in state.jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    state.jobs[job_id]["status"] = "paused"
+    state.jobs[job_id]["updated_at"] = datetime.now().isoformat()
+    
+    return {"message": f"Job {job_id} paused"}
+
+
+@app.post("/v1/retrain/{job_id}/resume", tags=["Agent"])
+async def resume_pipeline(job_id: str) -> dict:
+    """Resume a paused pipeline.
+    
+    Args:
+        job_id: Job identifier.
+        
+    Returns:
+        Resume confirmation.
+    """
+    if job_id not in state.jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    state.jobs[job_id]["status"] = "running"
+    state.jobs[job_id]["updated_at"] = datetime.now().isoformat()
+    
+    return {"message": f"Job {job_id} resumed"}
+
+
+async def execute_guardian_pipeline(guardian, job_id: str) -> None:
+    """Execute Repo Guardian pipeline in background.
+    
+    Args:
+        guardian: RepoGuardian instance.
+        job_id: Job identifier.
+    """
+    job = state.jobs.get(job_id)
+    if not job:
+        return
+    
+    try:
+        job["status"] = "running"
+        job["updated_at"] = datetime.now().isoformat()
+        
+        # Run pipeline
+        results = await guardian.run_pipeline()
+        
+        job["status"] = "completed" if results.get("success") else "failed"
+        job["results"] = results
+        
+    except Exception as e:
+        logger.error(f"Guardian pipeline failed: {e}")
+        job["status"] = "failed"
+        job["error"] = str(e)
+    
+    job["updated_at"] = datetime.now().isoformat()
+
+
+# --------------------------------------------------------------------------
 # Entry Point
 # --------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

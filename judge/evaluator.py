@@ -440,6 +440,240 @@ class ModelEvaluator:
         logger.info(f"Average latency: {avg_latency:.1f}ms")
         return avg_latency
     
+    def evaluate_reconstruction(
+        self,
+        original_code_blocks: list[str],
+        prompts: Optional[list[str]] = None,
+    ) -> dict[str, float]:
+        """Evaluate how well the model can reproduce training code.
+        
+        Tests pattern memorization by asking the model to complete or
+        reproduce code it was trained on.
+        
+        Args:
+            original_code_blocks: Original code samples from training.
+            prompts: Optional custom prompts (defaults to first 50 chars).
+            
+        Returns:
+            Dictionary with reconstruction metrics:
+            - edit_distance: Average normalized edit distance (0=identical)
+            - exact_match_rate: Fraction of exact matches
+            - semantic_similarity: Cosine similarity of embeddings
+        """
+        import torch
+        from difflib import SequenceMatcher
+        
+        if self.config.max_samples:
+            original_code_blocks = original_code_blocks[:self.config.max_samples]
+        
+        edit_distances = []
+        exact_matches = 0
+        similarities = []
+        
+        with torch.no_grad():
+            for i, original in enumerate(original_code_blocks):
+                # Create prompt (first 50 chars or custom)
+                if prompts and i < len(prompts):
+                    prompt = prompts[i]
+                else:
+                    prompt = original[:min(50, len(original))] + "\n# Complete this code:\n"
+                
+                # Generate completion
+                generated = self._generate_code(prompt)
+                
+                # Compute edit distance (normalized)
+                matcher = SequenceMatcher(None, original, generated)
+                similarity = matcher.ratio()
+                edit_distance = 1.0 - similarity
+                edit_distances.append(edit_distance)
+                
+                # Exact match
+                if original.strip() == generated.strip():
+                    exact_matches += 1
+                
+                # Store similarity for averaging
+                similarities.append(similarity)
+        
+        total = len(original_code_blocks)
+        result = {
+            "edit_distance": sum(edit_distances) / total if total > 0 else 0.0,
+            "exact_match_rate": exact_matches / total if total > 0 else 0.0,
+            "semantic_similarity": sum(similarities) / total if total > 0 else 0.0,
+        }
+        
+        logger.info(f"Reconstruction metrics: {result}")
+        return result
+    
+    def evaluate_hallucination_rate(
+        self,
+        raft_test_set: list[dict[str, Any]],
+    ) -> float:
+        """Evaluate hallucination rate using RAFT examples.
+        
+        RAFT examples contain a question, correct context, and distractor
+        documents. The model should answer from context, not invent code.
+        
+        Args:
+            raft_test_set: List of RAFT examples with keys:
+                - question: The question to answer
+                - context: Correct context document
+                - distractors: List of incorrect documents
+                - answer: Expected answer
+                
+        Returns:
+            Hallucination rate (0.0 = no hallucinations, 1.0 = all hallucinated).
+        """
+        import torch
+        
+        if self.config.max_samples:
+            raft_test_set = raft_test_set[:self.config.max_samples]
+        
+        hallucinations = 0
+        total = 0
+        
+        with torch.no_grad():
+            for example in raft_test_set:
+                question = example.get("question", "")
+                context = example.get("context", "")
+                distractors = example.get("distractors", [])
+                expected_answer = example.get("answer", "")
+                
+                # Create prompt with context
+                prompt = f"""Based on the following context, answer the question.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+                
+                # Generate answer
+                inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
+                inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+                
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=self.config.max_new_tokens,
+                    temperature=0.1,
+                    do_sample=False,
+                )
+                
+                generated = self.tokenizer.decode(
+                    outputs[0][inputs["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                ).strip()
+                
+                # Check for hallucination:
+                # If answer contains code not in context or distractors, it's hallucinated
+                is_hallucination = self._detect_hallucination(
+                    generated, context, distractors, expected_answer
+                )
+                
+                if is_hallucination:
+                    hallucinations += 1
+                total += 1
+        
+        rate = hallucinations / total if total > 0 else 0.0
+        logger.info(f"Hallucination rate: {rate:.2%} ({hallucinations}/{total})")
+        return rate
+    
+    def _detect_hallucination(
+        self,
+        generated: str,
+        context: str,
+        distractors: list[str],
+        expected: str,
+    ) -> bool:
+        """Detect if generated output is a hallucination.
+        
+        Args:
+            generated: Model's generated answer.
+            context: Correct context.
+            distractors: Distractor documents.
+            expected: Expected answer.
+            
+        Returns:
+            True if hallucination detected.
+        """
+        # If answer closely matches expected, not hallucinated
+        from difflib import SequenceMatcher
+        
+        similarity_to_expected = SequenceMatcher(None, generated.lower(), expected.lower()).ratio()
+        if similarity_to_expected > 0.7:
+            return False
+        
+        # Check if generated content appears in any source
+        all_sources = context + " ".join(distractors)
+        
+        # Extract code-like tokens from generated text
+        import re
+        code_tokens = set(re.findall(r'\b[a-zA-Z_][a-zA-Z_0-9]*\b', generated))
+        source_tokens = set(re.findall(r'\b[a-zA-Z_][a-zA-Z_0-9]*\b', all_sources))
+        
+        # If many tokens in generated are not in sources, likely hallucinated
+        if code_tokens:
+            novel_tokens = code_tokens - source_tokens
+            novelty_rate = len(novel_tokens) / len(code_tokens)
+            
+            # High novelty rate indicates hallucination
+            if novelty_rate > 0.5:
+                return True
+        
+        return False
+    
+    def run_humaneval_subset(
+        self,
+        num_samples: int = 100,
+        k_values: list[int] = [1, 10],
+    ) -> dict[str, float]:
+        """Run HumanEval benchmark on a subset of problems.
+        
+        Loads HumanEval problems and evaluates pass@k.
+        
+        Args:
+            num_samples: Number of problems to evaluate.
+            k_values: k values for pass@k computation.
+            
+        Returns:
+            Dictionary with pass@k scores.
+        """
+        try:
+            from datasets import load_dataset
+            
+            # Load HumanEval dataset
+            dataset = load_dataset("openai_humaneval", split="test")
+            
+            # Limit to num_samples
+            problems = []
+            for i, example in enumerate(dataset):
+                if i >= num_samples:
+                    break
+                    
+                problems.append({
+                    "prompt": example["prompt"],
+                    "test": example["test"],
+                    "entry_point": example["entry_point"],
+                })
+            
+            logger.info(f"Running HumanEval on {len(problems)} problems...")
+            
+            # Use existing pass@k implementation
+            results = self.compute_pass_at_k(problems, k_values)
+            
+            # Add humaneval prefix
+            humaneval_results = {f"humaneval_{k}": v for k, v in results.items()}
+            
+            logger.info(f"HumanEval results: {humaneval_results}")
+            return humaneval_results
+            
+        except ImportError:
+            logger.warning("datasets library not installed, skipping HumanEval")
+            return {}
+        except Exception as e:
+            logger.error(f"HumanEval evaluation failed: {e}")
+            return {}
+    
     def evaluate_all(self, dataset: "Dataset") -> EvaluationResult:
         """Run all configured evaluations.
         
@@ -474,3 +708,4 @@ class ModelEvaluator:
         
         logger.info(f"Evaluation complete:\n{result.summary()}")
         return result
+

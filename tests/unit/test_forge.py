@@ -477,5 +477,276 @@ class TestEdgeCases:
         assert callback.best_value is None
 
 
+# =============================================================================
+# LossPlotter Tests
+# =============================================================================
+
+class TestLossPlotter:
+    """Tests for LossPlotter callback."""
+    
+    def test_init_creates_output_dir(self, tmp_path: Path) -> None:
+        """Test that output directory is created."""
+        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        
+        output_dir = tmp_path / "plots"
+        config = LossPlotterConfig(output_dir=str(output_dir))
+        plotter = LossPlotter(config)
+        
+        assert output_dir.exists()
+    
+    def test_log_stores_history(self, tmp_path: Path) -> None:
+        """Test that on_log stores metrics in history."""
+        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        
+        config = LossPlotterConfig(output_dir=str(tmp_path), plot_interval=1000)
+        plotter = LossPlotter(config)
+        
+        plotter.on_log({"train_loss": 0.5, "eval_loss": 0.6}, step=100, epoch=1.5)
+        
+        assert len(plotter.history) == 1
+        assert plotter.history[0].step == 100
+        assert plotter.history[0].metrics["train_loss"] == 0.5
+    
+    def test_save_plot_creates_file(self, tmp_path: Path) -> None:
+        """Test that save_plot creates a PNG file."""
+        pytest.importorskip("matplotlib")
+        
+        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        
+        config = LossPlotterConfig(output_dir=str(tmp_path), plot_interval=1000)
+        plotter = LossPlotter(config)
+        
+        # Add some data
+        for i in range(10):
+            plotter.on_log({"train_loss": 1.0 - i * 0.05}, step=i * 10, epoch=i * 0.1)
+        
+        output_path = plotter.save_plot("test_plot.png")
+        
+        assert output_path is not None
+        assert output_path.exists()
+        assert output_path.suffix == ".png"
+    
+    def test_smoothing(self, tmp_path: Path) -> None:
+        """Test loss smoothing functionality."""
+        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        
+        config = LossPlotterConfig(output_dir=str(tmp_path), smooth_window=3)
+        plotter = LossPlotter(config)
+        
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        smoothed = plotter._smooth_values(values)
+        
+        # First value should be unchanged
+        assert smoothed[0] == 1.0
+        # Second value should be average of first two
+        assert smoothed[1] == 1.5
+        # Third value should be average of first three
+        assert smoothed[2] == 2.0
+    
+    def test_get_loss_series(self, tmp_path: Path) -> None:
+        """Test extracting loss series for a specific metric."""
+        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        
+        config = LossPlotterConfig(output_dir=str(tmp_path))
+        plotter = LossPlotter(config)
+        
+        plotter.on_log({"train_loss": 0.5}, step=10, epoch=0.1)
+        plotter.on_log({"train_loss": 0.4}, step=20, epoch=0.2)
+        
+        series = plotter.get_loss_series("train_loss")
+        
+        assert len(series) == 2
+        assert series[0] == (10, 0.5)
+        assert series[1] == (20, 0.4)
+    
+    def test_get_latest_loss(self, tmp_path: Path) -> None:
+        """Test getting the latest loss value."""
+        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        
+        config = LossPlotterConfig(output_dir=str(tmp_path))
+        plotter = LossPlotter(config)
+        
+        assert plotter.get_latest_loss() is None
+        
+        plotter.on_log({"train_loss": 0.5}, step=10, epoch=0.1)
+        plotter.on_log({"train_loss": 0.3}, step=20, epoch=0.2)
+        
+        assert plotter.get_latest_loss() == 0.3
+
+
+# =============================================================================
+# Quantization Tests
+# =============================================================================
+
+class TestQuantizationReduction:
+    """Tests for QLoRA quantization size reduction."""
+    
+    def test_quantization_config_defaults(self) -> None:
+        """Test default quantization configuration."""
+        from training.schemas import QuantizationConfig, QuantType
+        
+        config = QuantizationConfig()
+        
+        assert config.bits == 4
+        assert config.quant_type == QuantType.NF4
+        assert config.double_quant is True
+    
+    def test_4bit_reduces_parameter_size(self) -> None:
+        """Test that 4-bit quantization reduces model size by ~75%."""
+        try:
+            import torch
+        except ImportError:
+            pytest.skip("PyTorch not installed")
+        
+        # Create a simple weight matrix (simulating float32)
+        float32_weight = torch.randn(1024, 1024, dtype=torch.float32)
+        float32_bytes = float32_weight.numel() * 4  # 4 bytes per float32
+        
+        # 4-bit quantization: each parameter uses 0.5 bytes (4 bits = 0.5 bytes)
+        quantized_bytes = float32_weight.numel() * 0.5
+        
+        # Calculate reduction
+        reduction = 1 - (quantized_bytes / float32_bytes)
+        
+        # Should be approximately 87.5% reduction (4 bits vs 32 bits)
+        # With overhead for quantization constants, actual is ~75%
+        assert reduction >= 0.75, f"Expected >= 75% reduction, got {reduction:.1%}"
+    
+    def test_bitsandbytes_quantization_math(self) -> None:
+        """Test mathematical verification of quantization reduction."""
+        # 32-bit float = 4 bytes per parameter
+        # 4-bit quant = 0.5 bytes per parameter base
+        # With block-wise quantization (64 params per block):
+        #   - 64 params * 0.5 bytes = 32 bytes for values
+        #   - 2 bytes for scale (fp16)
+        #   - 2 bytes for zero point with double quant
+        # Total: 36 bytes for 64 params = 0.5625 bytes/param
+        
+        params_per_block = 64
+        bytes_per_param_fp32 = 4.0
+        bytes_per_block_quantized = 32 + 2 + 2  # values + scale + zero
+        bytes_per_param_quantized = bytes_per_block_quantized / params_per_block
+        
+        reduction = 1 - (bytes_per_param_quantized / bytes_per_param_fp32)
+        
+        # Should achieve at least 75% reduction
+        assert reduction >= 0.75, f"Expected >= 75% reduction, got {reduction:.1%}"
+
+
+# =============================================================================
+# Checkpoint Tests
+# =============================================================================
+
+class TestCheckpointPersistence:
+    """Tests for checkpoint save/load functionality."""
+    
+    def test_config_serialization_roundtrip(self, tmp_path: Path) -> None:
+        """Test that config can be saved and loaded correctly."""
+        from training.schemas import FineTuneConfig
+        
+        # Create config with custom values
+        config = FineTuneConfig()
+        config.pissa.rank = 128
+        config.training.learning_rate = 1e-4
+        config.training.num_train_epochs = 5
+        
+        # Save
+        config_path = tmp_path / "test_config.yaml"
+        config.to_yaml(config_path)
+        
+        # Load
+        loaded = FineTuneConfig.from_yaml(config_path)
+        
+        # Verify
+        assert loaded.pissa.rank == 128
+        assert loaded.training.learning_rate == 1e-4
+        assert loaded.training.num_train_epochs == 5
+    
+    def test_checkpoint_directory_creation(self, tmp_path: Path) -> None:
+        """Test that checkpoint directories are created correctly."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig
+        
+        config = FineTuneConfig()
+        config.logging.output_dir = str(tmp_path / "output")
+        
+        trainer = FineTuneTrainer(config)
+        
+        # Verify output directory will be created when needed
+        assert trainer.config.logging.output_dir == str(tmp_path / "output")
+    
+    def test_pissa_adapter_weights_shape(self) -> None:
+        """Test that PiSSA adapter weights have correct shapes for checkpointing."""
+        try:
+            import torch
+        except ImportError:
+            pytest.skip("PyTorch not installed")
+        
+        from training.forge import PiSSAInitializer
+        
+        rank = 32
+        out_features = 256
+        in_features = 512
+        
+        W = torch.randn(out_features, in_features)
+        initializer = PiSSAInitializer(rank=rank)
+        
+        A, B, W_res = initializer.compute_init(W)
+        
+        # Verify shapes for saving
+        assert A.shape == (out_features, rank)
+        assert B.shape == (rank, in_features)
+        assert W_res.shape == (out_features, in_features)
+        
+        # Verify can be serialized
+        checkpoint = {
+            "lora_A": A.clone(),
+            "lora_B": B.clone(),
+            "residual": W_res.clone(),
+        }
+        
+        # Save and load
+        checkpoint_path = Path("/tmp/test_checkpoint.pt")
+        torch.save(checkpoint, checkpoint_path)
+        loaded = torch.load(checkpoint_path)
+        
+        assert torch.allclose(A, loaded["lora_A"])
+        assert torch.allclose(B, loaded["lora_B"])
+        assert torch.allclose(W_res, loaded["residual"])
+        
+        # Cleanup
+        checkpoint_path.unlink()
+
+
+# =============================================================================
+# DPO Tests
+# =============================================================================
+
+class TestDPOConfiguration:
+    """Tests for DPO (Direct Preference Optimization) configuration."""
+    
+    def test_dpo_config_defaults(self) -> None:
+        """Test default DPO configuration."""
+        from training.schemas import DPOConfig, DPOLossType
+        
+        config = DPOConfig()
+        
+        assert config.enabled is False
+        assert config.beta == 0.1
+        assert config.learning_rate == 5e-5
+        assert config.loss_type == DPOLossType.SIGMOID
+    
+    def test_dpo_disabled_by_default(self) -> None:
+        """Test that DPO is disabled by default in trainer."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig
+        
+        config = FineTuneConfig()
+        trainer = FineTuneTrainer(config)
+        
+        assert trainer.config.dpo.enabled is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

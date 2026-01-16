@@ -357,3 +357,256 @@ class OllamaManager:
         if self._client:
             await self._client.aclose()
             self._client = None
+    
+    # -------------------------------------------------------------------------
+    # Active Model Management
+    # -------------------------------------------------------------------------
+    
+    def get_active_model(self) -> Optional[str]:
+        """Get the currently active model from config.
+        
+        Returns:
+            Active model name or None.
+        """
+        config_path = Path("./config/active_model.json")
+        
+        if config_path.exists():
+            try:
+                import json
+                with open(config_path) as f:
+                    data = json.load(f)
+                return data.get("active_model")
+            except Exception as e:
+                logger.warning(f"Could not read active model config: {e}")
+        
+        return None
+    
+    def set_active_model(self, model_name: str) -> bool:
+        """Set the active model in config.
+        
+        Args:
+            model_name: Name of model to set as active.
+            
+        Returns:
+            True if successful.
+        """
+        config_path = Path("./config/active_model.json")
+        
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            import json
+            with open(config_path, "w") as f:
+                json.dump({
+                    "active_model": model_name,
+                    "updated_at": datetime.now().isoformat(),
+                }, f, indent=2)
+            
+            logger.info(f"Set active model to: {model_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to set active model: {e}")
+            return False
+    
+    async def create_model_from_gguf(
+        self,
+        model_name: str,
+        gguf_path: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        top_k: int = 40,
+        top_p: float = 0.9,
+        num_predict: int = 512,
+    ) -> bool:
+        """Create an Ollama model from a GGUF file.
+        
+        Generates a Modelfile from template and creates the model.
+        
+        Args:
+            model_name: Name for the new model.
+            gguf_path: Path to GGUF file.
+            system_prompt: Optional system prompt.
+            temperature: Sampling temperature.
+            top_k: Top-k sampling.
+            top_p: Top-p sampling.
+            num_predict: Max tokens to generate.
+            
+        Returns:
+            True if creation succeeded.
+        """
+        from pathlib import Path
+        
+        gguf_file = Path(gguf_path)
+        if not gguf_file.exists():
+            logger.error(f"GGUF file not found: {gguf_path}")
+            return False
+        
+        # Default system prompt for code assistant
+        if not system_prompt:
+            system_prompt = (
+                "You are an expert coding assistant. "
+                "Provide clear, concise, and correct code solutions. "
+                "Always explain your reasoning and follow best practices."
+            )
+        
+        # Generate Modelfile content
+        modelfile_content = self._generate_modelfile(
+            gguf_path=str(gguf_file.absolute()),
+            system_prompt=system_prompt,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            num_predict=num_predict,
+        )
+        
+        # Write Modelfile
+        modelfile_path = gguf_file.parent / f"Modelfile.{model_name}"
+        modelfile_path.write_text(modelfile_content)
+        logger.info(f"Generated Modelfile at: {modelfile_path}")
+        
+        # Create model
+        try:
+            client = await self._get_client()
+            
+            response = await client.post(
+                "/api/create",
+                json={
+                    "name": model_name,
+                    "modelfile": modelfile_content,
+                },
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to create model: {response.text}")
+                return False
+            
+            logger.info(f"Successfully created model: {model_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating model: {e}")
+            return False
+    
+    def _generate_modelfile(
+        self,
+        gguf_path: str,
+        system_prompt: str,
+        temperature: float = 0.7,
+        top_k: int = 40,
+        top_p: float = 0.9,
+        num_predict: int = 512,
+    ) -> str:
+        """Generate Modelfile content from template.
+        
+        Args:
+            gguf_path: Path to GGUF file.
+            system_prompt: System prompt.
+            temperature: Sampling temperature.
+            top_k: Top-k sampling.
+            top_p: Top-p sampling.
+            num_predict: Max tokens.
+            
+        Returns:
+            Modelfile content string.
+        """
+        # Escape quotes in system prompt
+        escaped_prompt = system_prompt.replace('"', '\\"')
+        
+        return f'''# AI Forge Generated Modelfile
+# Created: {datetime.now().isoformat()}
+
+FROM {gguf_path}
+
+SYSTEM "{escaped_prompt}"
+
+# Model Parameters
+PARAMETER temperature {temperature}
+PARAMETER top_k {top_k}
+PARAMETER top_p {top_p}
+PARAMETER num_predict {num_predict}
+PARAMETER stop "<|eot_id|>"
+PARAMETER stop "<|end_of_text|>"
+'''
+    
+    async def try_start_ollama(self) -> bool:
+        """Attempt to start Ollama if not running.
+        
+        Returns:
+            True if Ollama is running after attempt.
+        """
+        import subprocess
+        
+        # Check if already running
+        if await self.health_check():
+            return True
+        
+        logger.info("Ollama not running, attempting to start...")
+        
+        try:
+            # Try to start Ollama in background
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            
+            # Wait for startup
+            for _ in range(10):
+                await asyncio.sleep(1)
+                if await self.health_check():
+                    logger.info("Ollama started successfully")
+                    return True
+            
+            logger.warning("Ollama failed to start within timeout")
+            return False
+            
+        except FileNotFoundError:
+            logger.error(
+                "Ollama not installed. Install from: https://ollama.ai"
+            )
+            return False
+        except Exception as e:
+            logger.error(f"Failed to start Ollama: {e}")
+            return False
+    
+    async def query_model(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+    ) -> str:
+        """Query a model with a prompt.
+        
+        Convenience method that uses active model if not specified.
+        
+        Args:
+            prompt: Input prompt.
+            model: Optional model name (uses active if not provided).
+            temperature: Sampling temperature.
+            
+        Returns:
+            Generated response.
+            
+        Raises:
+            ValueError: If no model specified and no active model set.
+        """
+        if not model:
+            model = self.get_active_model()
+            if not model:
+                raise ValueError(
+                    "No model specified and no active model set. "
+                    "Use set_active_model() or pass model parameter."
+                )
+        
+        return await self.generate(
+            model=model,
+            prompt=prompt,
+            temperature=temperature,
+        )
+
+
+# Import for datetime
+from datetime import datetime
+from pathlib import Path
+

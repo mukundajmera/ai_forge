@@ -451,3 +451,375 @@ class RepoGuardian:
         
         results["completed_at"] = datetime.now().isoformat()
         return results
+    
+    # -------------------------------------------------------------------------
+    # Git-based Repository Monitoring
+    # -------------------------------------------------------------------------
+    
+    def monitor_repository(self) -> dict[str, Any]:
+        """Monitor repository for changes since last training.
+        
+        Checks git commit history and file changes to determine
+        if retraining is warranted.
+        
+        Returns:
+            Dictionary with should_retrain, reason, and metrics.
+        """
+        import subprocess
+        
+        logger.info("Monitoring repository for changes...")
+        
+        metrics = {
+            "commits_since_last_train": 0,
+            "files_changed": 0,
+            "critical_paths_changed": False,
+            "release_tag_detected": False,
+        }
+        
+        # Get last training timestamp
+        last_train_file = self.project_path / ".ai_forge" / "last_training"
+        last_train_time = None
+        
+        if last_train_file.exists():
+            last_train_time = last_train_file.read_text().strip()
+        
+        try:
+            # Count commits since last training
+            if last_train_time:
+                result = subprocess.run(
+                    ["git", "log", "--oneline", f"--since={last_train_time}"],
+                    cwd=self.project_path,
+                    capture_output=True,
+                    text=True,
+                )
+                metrics["commits_since_last_train"] = len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
+            else:
+                # Count total commits
+                result = subprocess.run(
+                    ["git", "rev-list", "--count", "HEAD"],
+                    cwd=self.project_path,
+                    capture_output=True,
+                    text=True,
+                )
+                metrics["commits_since_last_train"] = int(result.stdout.strip()) if result.stdout.strip() else 0
+            
+            # Check for changed files
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD~10...HEAD"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+            )
+            changed_files = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            metrics["files_changed"] = len(changed_files)
+            
+            # Check critical paths
+            critical_paths = ["src/core", "src/main", "lib/", "core/"]
+            for f in changed_files:
+                for path in critical_paths:
+                    if f.startswith(path):
+                        metrics["critical_paths_changed"] = True
+                        break
+            
+            # Check for release tags
+            result = subprocess.run(
+                ["git", "tag", "--points-at", "HEAD"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+            )
+            tags = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            for tag in tags:
+                if tag.startswith("release/") or tag.startswith("v"):
+                    metrics["release_tag_detected"] = True
+                    break
+                    
+        except Exception as e:
+            logger.warning(f"Git monitoring failed: {e}")
+        
+        # Determine if retraining is needed
+        should_retrain = False
+        reasons = []
+        
+        if metrics["files_changed"] >= 20:
+            should_retrain = True
+            reasons.append(f"{metrics['files_changed']} files changed (threshold: 20)")
+        
+        if metrics["critical_paths_changed"]:
+            should_retrain = True
+            reasons.append("Critical paths modified")
+        
+        if metrics["release_tag_detected"]:
+            should_retrain = True
+            reasons.append("Release tag detected")
+        
+        if metrics["commits_since_last_train"] >= 50:
+            should_retrain = True
+            reasons.append(f"{metrics['commits_since_last_train']} commits since last training")
+        
+        return {
+            "should_retrain": should_retrain,
+            "reason": "; ".join(reasons) if reasons else "No significant changes",
+            "metrics": metrics,
+            "checked_at": datetime.now().isoformat(),
+        }
+    
+    def plan_training_cycle(self) -> dict[str, Any]:
+        """Create a structured training plan.
+        
+        Returns:
+            Dictionary with plan steps and estimated duration.
+        """
+        logger.info("Planning training cycle...")
+        
+        tasks = [
+            Task(
+                id="1",
+                name="extract_data",
+                description="Extract code chunks from repository",
+                task_type=TaskType.EXTRACT_DATA,
+                estimated_minutes=5,
+            ),
+            Task(
+                id="2", 
+                name="validate_data",
+                description="Validate data quality",
+                task_type=TaskType.VALIDATE_DATA,
+                estimated_minutes=2,
+            ),
+            Task(
+                id="3",
+                name="train_model",
+                description="Execute PiSSA+QLoRA fine-tuning",
+                task_type=TaskType.TRAIN,
+                estimated_minutes=30,
+            ),
+            Task(
+                id="4",
+                name="evaluate_model",
+                description="Run evaluation suite",
+                task_type=TaskType.VALIDATE_MODEL,
+                estimated_minutes=5,
+            ),
+            Task(
+                id="5",
+                name="export_model",
+                description="Convert to GGUF format",
+                task_type=TaskType.EXPORT,
+                estimated_minutes=3,
+            ),
+            Task(
+                id="6",
+                name="deploy_model",
+                description="Deploy to Ollama",
+                task_type=TaskType.DEPLOY,
+                estimated_minutes=2,
+            ),
+        ]
+        
+        self._planned_tasks = tasks
+        
+        return {
+            "plan": [t.to_dict() for t in tasks],
+            "estimated_duration_minutes": sum(t.estimated_minutes for t in tasks),
+            "created_at": datetime.now().isoformat(),
+        }
+    
+    async def execute_task(self, task: "Task") -> "Artifact":
+        """Execute a single planned task.
+        
+        Args:
+            task: Task to execute.
+            
+        Returns:
+            Artifact with results.
+        """
+        logger.info(f"Executing task: {task.name}")
+        
+        task.status = TaskStatus.RUNNING
+        task.started_at = datetime.now()
+        
+        try:
+            if task.task_type == TaskType.EXTRACT_DATA:
+                result = await self.extract_training_data()
+                artifact = Artifact(
+                    name="data_extraction_report",
+                    artifact_type="report",
+                    content=result,
+                )
+                
+            elif task.task_type == TaskType.VALIDATE_DATA:
+                # Validate using last analysis
+                report = await self.analyze_repository()
+                artifact = Artifact(
+                    name="data_quality_report",
+                    artifact_type="report",
+                    content={
+                        "samples": report.training_data_samples,
+                        "ready": report.ready_for_training,
+                        "issues": report.issues,
+                    },
+                )
+                
+            elif task.task_type == TaskType.TRAIN:
+                result = await self.start_training()
+                artifact = Artifact(
+                    name="training_dashboard",
+                    artifact_type="dashboard",
+                    content=result,
+                )
+                
+            elif task.task_type == TaskType.VALIDATE_MODEL:
+                result = await self.evaluate_model()
+                artifact = Artifact(
+                    name="validation_report",
+                    artifact_type="report",
+                    content=result,
+                )
+                
+            elif task.task_type == TaskType.EXPORT:
+                result = await self.export_model()
+                artifact = Artifact(
+                    name="export_result",
+                    artifact_type="file",
+                    content=result,
+                )
+                
+            elif task.task_type == TaskType.DEPLOY:
+                result = await self.deploy_to_ollama()
+                artifact = Artifact(
+                    name="deployment_checklist",
+                    artifact_type="checklist",
+                    content=result,
+                )
+            else:
+                raise ValueError(f"Unknown task type: {task.task_type}")
+            
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime.now()
+            
+        except Exception as e:
+            task.status = TaskStatus.FAILED
+            task.error = str(e)
+            artifact = Artifact(
+                name=f"{task.name}_error",
+                artifact_type="error",
+                content={"error": str(e)},
+            )
+        
+        artifact.task_id = task.id
+        artifact.created_at = datetime.now()
+        
+        return artifact
+    
+    def pause(self) -> None:
+        """Pause the pipeline execution."""
+        self._pipeline_running = False
+        logger.info("Pipeline paused")
+    
+    def resume(self) -> None:
+        """Resume the pipeline execution."""
+        self._pipeline_running = True
+        logger.info("Pipeline resumed")
+    
+    def _save_last_training_time(self) -> None:
+        """Save current time as last training timestamp."""
+        marker_dir = self.project_path / ".ai_forge"
+        marker_dir.mkdir(exist_ok=True)
+        (marker_dir / "last_training").write_text(datetime.now().isoformat())
+
+
+# =============================================================================
+# Task and Artifact Classes
+# =============================================================================
+
+from enum import Enum
+
+
+class TaskType(Enum):
+    """Types of pipeline tasks."""
+    EXTRACT_DATA = "extract_data"
+    VALIDATE_DATA = "validate_data"
+    TRAIN = "train"
+    VALIDATE_MODEL = "validate_model"
+    EXPORT = "export"
+    DEPLOY = "deploy"
+
+
+class TaskStatus(Enum):
+    """Task execution status."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class Task:
+    """Represents a pipeline task.
+    
+    Attributes:
+        id: Unique task identifier.
+        name: Task name.
+        description: Task description.
+        task_type: Type of task.
+        estimated_minutes: Estimated duration.
+        status: Current status.
+        started_at: Start time.
+        completed_at: Completion time.
+        error: Error message if failed.
+    """
+    
+    id: str
+    name: str
+    description: str
+    task_type: TaskType
+    estimated_minutes: float = 5.0
+    status: TaskStatus = TaskStatus.PENDING
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error: Optional[str] = None
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "type": self.task_type.value,
+            "estimated_minutes": self.estimated_minutes,
+            "status": self.status.value,
+        }
+
+
+@dataclass
+class Artifact:
+    """Represents an output artifact from task execution.
+    
+    Attributes:
+        name: Artifact name.
+        artifact_type: Type (report, dashboard, file, checklist, error).
+        content: Artifact content.
+        task_id: Associated task ID.
+        created_at: Creation time.
+    """
+    
+    name: str
+    artifact_type: str
+    content: Any
+    task_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    def to_markdown(self) -> str:
+        """Convert to markdown representation."""
+        import json
+        
+        md = f"# Artifact: {self.name}\n\n"
+        md += f"**Type:** {self.artifact_type}\n"
+        md += f"**Created:** {self.created_at.isoformat() if self.created_at else 'N/A'}\n\n"
+        md += "## Content\n\n"
+        md += f"```json\n{json.dumps(self.content, indent=2, default=str)}\n```\n"
+        
+        return md
+

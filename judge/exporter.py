@@ -70,6 +70,82 @@ class ExportResult:
     error: Optional[str] = None
 
 
+def merge_adapters_to_base(
+    base_model_path: str | Path,
+    adapter_path: str | Path,
+    output_path: Optional[str | Path] = None,
+) -> Path:
+    """Merge PiSSA/LoRA adapters back into base model.
+    
+    Produces a standalone model that doesn't require adapters at inference.
+    
+    Args:
+        base_model_path: Path to base model or HF model ID.
+        adapter_path: Path to trained adapter weights.
+        output_path: Optional output path (defaults to adapter_path/merged).
+        
+    Returns:
+        Path to merged model.
+        
+    Example:
+        >>> merged_path = merge_adapters_to_base(
+        ...     "unsloth/Llama-3.2-3B-Instruct",
+        ...     "./output/adapters"
+        ... )
+    """
+    from pathlib import Path
+    
+    logger = logging.getLogger(__name__)
+    adapter_path = Path(adapter_path)
+    
+    if output_path is None:
+        output_path = adapter_path / "merged"
+    output_path = Path(output_path)
+    
+    logger.info(f"Merging adapters from {adapter_path} into {base_model_path}")
+    
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from peft import PeftModel
+        
+        # Load base model
+        logger.info("Loading base model...")
+        base_model = AutoModelForCausalLM.from_pretrained(
+            base_model_path,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+        
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_path,
+            trust_remote_code=True,
+        )
+        
+        # Load adapter
+        logger.info("Loading adapter...")
+        model = PeftModel.from_pretrained(base_model, adapter_path)
+        
+        # Merge adapter into base model
+        logger.info("Merging adapter weights...")
+        model = model.merge_and_unload()
+        
+        # Save merged model
+        output_path.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(output_path)
+        tokenizer.save_pretrained(output_path)
+        
+        logger.info(f"Merged model saved to {output_path}")
+        return output_path
+        
+    except ImportError as e:
+        logger.error(f"Missing dependencies for adapter merging: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to merge adapters: {e}")
+        raise
+
+
 class GGUFExporter:
     """GGUF format exporter for Ollama deployment.
     

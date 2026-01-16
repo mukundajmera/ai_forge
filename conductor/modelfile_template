@@ -1,0 +1,16 @@
+# AI Forge Modelfile Template
+# Use {variable} placeholders for substitution
+
+FROM {gguf_path}
+
+SYSTEM "{system_prompt}"
+
+# Model Parameters
+PARAMETER temperature {temperature}
+PARAMETER top_k {top_k}
+PARAMETER top_p {top_p}
+PARAMETER num_predict {num_predict}
+
+# Stop tokens for Llama models
+PARAMETER stop "<|eot_id|>"
+PARAMETER stop "<|end_of_text|>"
