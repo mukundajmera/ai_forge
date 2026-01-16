@@ -1,0 +1,185 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai_forge"
+version = "1.0.0"
+description = "Local LLM Fine-Tuning Service for Mac Apple Silicon"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "AI Forge Team"}
+]
+keywords = [
+    "llm",
+    "fine-tuning",
+    "pissa",
+    "qlora",
+    "ollama",
+    "mlx",
+    "apple-silicon",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Core ML
+    "torch>=2.1.0",
+    "transformers>=4.36.0",
+    "datasets>=2.16.0",
+    "peft>=0.7.0",
+    "trl>=0.7.0",
+    
+    # Mac-specific
+    "mlx>=0.5.0",
+    "mlx-lm>=0.5.0",
+    
+    # API
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "pydantic>=2.5.0",
+    "httpx>=0.26.0",
+    "python-multipart>=0.0.6",
+    
+    # Data processing
+    "tree-sitter>=0.20.0",
+    "tree-sitter-python>=0.20.0",
+    
+    # Utilities
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+    "click>=8.1.0",
+    "jinja2>=3.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+]
+
+unsloth = [
+    "unsloth @ git+https://github.com/unslothai/unsloth.git",
+]
+
+evaluation = [
+    "codebleu>=0.7.0",
+    "sacrebleu>=2.4.0",
+]
+
+all = [
+    "ai_forge[dev]",
+    "ai_forge[unsloth]",
+    "ai_forge[evaluation]",
+]
+
+[project.scripts]
+ai-forge = "ai_forge.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ai-forge/ai-forge"
+Documentation = "https://ai-forge.readthedocs.io"
+Repository = "https://github.com/ai-forge/ai-forge"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ai_forge*"]
+
+[tool.setuptools.package-data]
+ai_forge = [
+    "config/*.yaml",
+    "antigravity_agent/*.yaml",
+    "antigravity_agent/artifacts_templates/*",
+]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ai_forge"]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "transformers.*",
+    "torch.*",
+    "peft.*",
+    "trl.*",
+    "datasets.*",
+    "tree_sitter.*",
+    "unsloth.*",
+    "mlx.*",
+]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks integration tests",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["ai_forge"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

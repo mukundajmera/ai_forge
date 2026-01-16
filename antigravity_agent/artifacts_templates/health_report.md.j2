@@ -1,0 +1,48 @@
+# Health Report Template
+
+**Generated:** {{ timestamp }}
+**Repository:** {{ repository_path }}
+
+## Status: {{ "✅ Ready" if ready_for_training else "⚠️ Not Ready" }}
+
+## Summary
+
+| Metric | Value |
+|--------|-------|
+| Total Files | {{ total_files }} |
+| Code Files | {{ code_files }} |
+| Training Data | {{ "✅" if training_data_exists else "❌" }} |
+| Training Samples | {{ training_data_samples }} |
+| Model Exists | {{ "✅" if model_exists else "❌" }} |
+
+## Issues
+
+{% if issues %}
+{% for issue in issues %}
+- ⚠️ {{ issue }}
+{% endfor %}
+{% else %}
+No issues found.
+{% endif %}
+
+## Recommendations
+
+{% if recommendations %}
+{% for rec in recommendations %}
+- 💡 {{ rec }}
+{% endfor %}
+{% else %}
+No recommendations.
+{% endif %}
+
+## Next Steps
+
+{% if ready_for_training %}
+1. Review training configuration
+2. Start fine-tuning with: `python -m ai_forge.training start`
+3. Monitor progress in the dashboard
+{% else %}
+1. Address the issues listed above
+2. Re-run repository analysis
+3. Ensure minimum requirements are met
+{% endif %}

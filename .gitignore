@@ -1,0 +1,81 @@
+# AI Forge - Git Ignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# mypy
+.mypy_cache/
+
+# Local development
+.env
+*.log
+logs/
+
+# Model outputs
+output/
+models/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Data
+data/
+*.json
+!.env.example
+!pyproject.toml
+
+# Cache
+.cache/
+cache/
+*.cache
+
+# Ollama
+.ollama/
+
+# Tree-sitter build artifacts
+build/
+*.so

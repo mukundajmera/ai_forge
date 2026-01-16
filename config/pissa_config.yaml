@@ -1,0 +1,69 @@
+# AI Forge - PiSSA Configuration
+# Principal Singular values and Singular vectors Adaptation
+# Reference: https://arxiv.org/abs/2404.02948
+
+# PiSSA provides 3-5x faster convergence than standard LoRA
+# with +5.16% average accuracy improvement
+
+pissa:
+  enabled: true
+  
+  # Core hyperparameters
+  rank: 64  # r: dimensionality of low-rank matrices
+  alpha: 128  # scaling factor (alpha/r determines update magnitude)
+  dropout: 0.05  # LoRA dropout for regularization
+  
+  # Target modules for attention layers
+  target_modules:
+    - "q_proj"  # Query projection
+    - "k_proj"  # Key projection
+    - "v_proj"  # Value projection
+    - "o_proj"  # Output projection
+    # Optional: MLP layers (increases parameters but may improve quality)
+    # - "gate_proj"
+    # - "up_proj"
+    # - "down_proj"
+  
+  # SVD initialization settings
+  svd:
+    # Use PiSSA's SVD-based initialization
+    init_method: "pissa"  # pissa | lora_default | gaussian
+    # Number of power iterations for SVD approximation
+    n_power_iterations: 4
+    # Random seed for reproducibility
+    seed: 42
+    
+  # Training dynamics
+  training:
+    # Use residual learning (recommended for PiSSA)
+    use_residual: true
+    # Scale factor for initialization
+    scaling: "alpha_over_r"  # alpha_over_r | rsqrt_r | fixed
+    # Bias handling
+    bias: "none"  # none | all | lora_only
+    
+# Comparison notes (from research):
+# 
+# Technique | Convergence | Accuracy | Memory | Complexity
+# ----------|-------------|----------|--------|------------
+# LoRA      | Baseline    | Baseline | 60%↓   | Low
+# PiSSA     | 3-5x faster | +5.16%   | 60%↓   | Medium
+# QLoRA     | Same        | ~Same    | 75%↓   | Medium
+# RoRA      | 2x faster   | +3%      | 60%↓   | High
+#
+# AI Forge uses PiSSA + QLoRA for optimal Mac performance
+
+# Advanced settings
+advanced:
+  # Merge strategy after training
+  merge_strategy: "weighted"  # simple | weighted | svd_merge
+  
+  # Adapter saving format
+  save_format: "safetensors"  # safetensors | pytorch
+  
+  # Checkpoint frequency
+  checkpoint_steps: 100
+  
+  # Evaluation during training
+  eval_strategy: "steps"
+  eval_steps: 50

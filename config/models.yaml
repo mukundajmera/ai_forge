@@ -1,0 +1,82 @@
+# AI Forge - Model Registry
+# Supported base models and their configurations
+
+models:
+  # Recommended for Mac M1/M2/M3 (8-16GB)
+  llama-3.2-3b:
+    name: "unsloth/Llama-3.2-3B-Instruct"
+    size: "3B"
+    memory_required_gb: 6
+    recommended_for: ["quick_prototyping", "8gb_macs"]
+    default_max_seq_length: 2048
+    supports_4bit: true
+    architecture: "llama"
+    
+  llama-3.2-7b:
+    name: "unsloth/Llama-3.2-7B-Instruct"
+    size: "7B"
+    memory_required_gb: 10
+    recommended_for: ["production", "16gb_macs"]
+    default_max_seq_length: 4096
+    supports_4bit: true
+    architecture: "llama"
+    
+  # Code-specialized models
+  codellama-7b:
+    name: "codellama/CodeLlama-7b-Instruct-hf"
+    size: "7B"
+    memory_required_gb: 12
+    recommended_for: ["code_generation", "code_analysis"]
+    default_max_seq_length: 16384
+    supports_4bit: true
+    architecture: "llama"
+    specialization: "code"
+    
+  deepseek-coder-6.7b:
+    name: "deepseek-ai/deepseek-coder-6.7b-instruct"
+    size: "6.7B"
+    memory_required_gb: 11
+    recommended_for: ["code_generation", "code_completion"]
+    default_max_seq_length: 16384
+    supports_4bit: true
+    architecture: "deepseek"
+    specialization: "code"
+    
+  # Mistral family
+  mistral-7b:
+    name: "mistralai/Mistral-7B-Instruct-v0.2"
+    size: "7B"
+    memory_required_gb: 12
+    recommended_for: ["general_purpose", "reasoning"]
+    default_max_seq_length: 8192
+    supports_4bit: true
+    architecture: "mistral"
+    
+  # Larger models (24GB+ recommended)
+  llama-3.1-13b:
+    name: "meta-llama/Llama-3.1-13B-Instruct"
+    size: "13B"
+    memory_required_gb: 18
+    recommended_for: ["high_quality", "24gb_macs"]
+    default_max_seq_length: 4096
+    supports_4bit: true
+    architecture: "llama"
+
+# Model selection strategy
+selection:
+  auto_select: true
+  fallback_model: "llama-3.2-3b"
+  memory_safety_margin_gb: 2
+  
+# Quantization presets
+quantization:
+  default: "4bit"  # QLoRA
+  options:
+    4bit:
+      compute_dtype: "float16"
+      quant_type: "nf4"
+      double_quant: true
+    8bit:
+      compute_dtype: "float16"
+      quant_type: "int8"
+      double_quant: false

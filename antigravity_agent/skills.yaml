@@ -1,0 +1,210 @@
+# AI Forge - Agent Skills Definition
+# Skills available to the Antigravity agent for autonomous orchestration
+
+agent:
+  name: "AI Forge Guardian"
+  description: "Autonomous agent for managing the LLM fine-tuning lifecycle"
+  version: "1.0.0"
+
+skills:
+  # Data Pipeline Skills
+  - name: analyze_repository
+    description: "Analyze repository health and readiness for fine-tuning"
+    inputs:
+      - name: project_path
+        type: string
+        required: true
+    outputs:
+      - name: health_report
+        type: HealthReport
+    
+  - name: extract_training_data
+    description: "Extract training data from codebase using Tree-sitter AST parsing"
+    inputs:
+      - name: project_path
+        type: string
+        required: true
+      - name: languages
+        type: list[string]
+        default: ["python"]
+    outputs:
+      - name: extraction_result
+        type: dict
+        
+  - name: generate_raft_data
+    description: "Generate RAFT training data with oracle and distractor documents"
+    inputs:
+      - name: chunks
+        type: list[CodeChunk]
+        required: true
+      - name: num_samples
+        type: int
+        default: 1000
+    outputs:
+      - name: dataset
+        type: list[dict]
+        
+  - name: validate_data
+    description: "Validate and clean training data"
+    inputs:
+      - name: data
+        type: list[dict]
+        required: true
+      - name: min_quality_score
+        type: float
+        default: 0.3
+    outputs:
+      - name: validation_result
+        type: ValidationResult
+
+  # Training Skills
+  - name: configure_training
+    description: "Configure fine-tuning parameters"
+    inputs:
+      - name: base_model
+        type: string
+        default: "unsloth/Llama-3.2-3B-Instruct"
+      - name: use_pissa
+        type: bool
+        default: true
+      - name: rank
+        type: int
+        default: 64
+      - name: epochs
+        type: int
+        default: 3
+    outputs:
+      - name: config
+        type: ForgeConfig
+        
+  - name: start_training
+    description: "Start the fine-tuning process"
+    inputs:
+      - name: config
+        type: ForgeConfig
+        required: true
+      - name: training_data
+        type: string
+        required: true
+    outputs:
+      - name: training_result
+        type: dict
+        
+  - name: monitor_training
+    description: "Monitor training progress and metrics"
+    inputs:
+      - name: job_id
+        type: string
+        required: true
+    outputs:
+      - name: status
+        type: JobStatus
+
+  # Evaluation Skills
+  - name: evaluate_model
+    description: "Evaluate fine-tuned model quality"
+    inputs:
+      - name: model_path
+        type: string
+        required: true
+      - name: test_data
+        type: string
+        required: true
+    outputs:
+      - name: metrics
+        type: EvaluationResult
+        
+  - name: run_benchmarks
+    description: "Run standardized benchmarks (HumanEval, MBPP)"
+    inputs:
+      - name: model_path
+        type: string
+        required: true
+      - name: benchmarks
+        type: list[string]
+        default: ["humaneval"]
+    outputs:
+      - name: results
+        type: list[BenchmarkResult]
+
+  # Export & Deployment Skills
+  - name: export_gguf
+    description: "Export model to GGUF format for Ollama"
+    inputs:
+      - name: model_path
+        type: string
+        required: true
+      - name: quantization
+        type: string
+        default: "q4_k_m"
+    outputs:
+      - name: export_result
+        type: ExportResult
+        
+  - name: deploy_ollama
+    description: "Deploy model to Ollama"
+    inputs:
+      - name: gguf_path
+        type: string
+        required: true
+      - name: model_name
+        type: string
+        required: true
+    outputs:
+      - name: success
+        type: bool
+        
+  - name: test_deployment
+    description: "Test deployed model with sample queries"
+    inputs:
+      - name: model_name
+        type: string
+        required: true
+      - name: test_queries
+        type: list[string]
+        required: true
+    outputs:
+      - name: responses
+        type: list[str]
+
+  # Orchestration Skills
+  - name: run_full_pipeline
+    description: "Execute the complete fine-tuning pipeline"
+    inputs:
+      - name: project_path
+        type: string
+        required: true
+      - name: auto_deploy
+        type: bool
+        default: false
+    outputs:
+      - name: pipeline_result
+        type: dict
+
+# Quality Gates
+quality_gates:
+  pre_training:
+    - min_training_samples: 100
+    - data_quality_score: 0.6
+    
+  post_training:
+    - max_perplexity: 10.0
+    - min_accuracy: 0.75
+    
+  pre_deployment:
+    - all_tests_pass: true
+    - latency_ms_max: 500
+
+# Triggers
+triggers:
+  - name: on_code_change
+    description: "Re-extract data when code changes"
+    event: "file_modified"
+    filter: "*.py"
+    action: extract_training_data
+    
+  - name: scheduled_retraining
+    description: "Weekly retraining schedule"
+    event: "cron"
+    schedule: "0 0 * * 0"  # Weekly on Sunday
+    action: run_full_pipeline
