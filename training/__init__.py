@@ -4,6 +4,14 @@ This module provides the core fine-tuning engine using Unsloth-MLX
 with PiSSA + QLoRA for optimal Mac Apple Silicon performance.
 """
 
-from ai_forge.training.forge import TrainingForge, ForgeConfig
+from .schemas import FineTuneConfig, PiSSAConfig, QuantizationConfig
+from .forge import FineTuneTrainer, PiSSAInitializer, create_trainer
 
-__all__ = ["TrainingForge", "ForgeConfig"]
+__all__ = [
+    "FineTuneConfig",
+    "PiSSAConfig", 
+    "QuantizationConfig",
+    "FineTuneTrainer",
+    "PiSSAInitializer",
+    "create_trainer",
+]

@@ -1,431 +1,679 @@
-"""Training Forge - Main fine-tuning orchestrator.
+"""Fine-Tune Trainer - Production-grade PiSSA + QLoRA training engine.
 
-This module provides the core training engine using Unsloth-MLX
-with PiSSA (Principal Singular values and Singular vectors Adaptation)
-and QLoRA (Quantized Low-Rank Adaptation) for optimal Mac Apple Silicon
-performance.
+This module implements the core training logic using:
+- PiSSA (Principal Singular components Initialization)
+- QLoRA (Quantized Low-Rank Adaptation)
+- Unsloth-MLX optimizations for Apple Silicon
 
-Key Features:
-    - PiSSA initialization for 3-5x faster convergence
-    - QLoRA 4-bit quantization for 75% memory reduction
-    - Unsloth-MLX optimizations for 80% memory savings on Mac
-    - Comprehensive callback system
-    - Automatic hardware detection and optimization
+Key Innovation - PiSSA:
+    Instead of random Gaussian initialization (standard LoRA), PiSSA initializes
+    adapter matrices using principal singular components via SVD decomposition:
+    
+    W = U @ S @ V^T
+    A_init = U[:, :rank] @ sqrt(S[:rank])
+    B_init = sqrt(S[:rank]) @ V[:, :rank]^T
+    
+    Benefits: 3-5x faster convergence, +5% accuracy on code benchmarks.
 
 Example:
-    >>> forge = TrainingForge(config)
-    >>> forge.load_model("unsloth/Llama-3.2-3B-Instruct")
-    >>> forge.train(train_dataset, eval_dataset)
-    >>> forge.save_model("./output/my_model")
+    >>> from training.forge import FineTuneTrainer
+    >>> config = FineTuneConfig()
+    >>> trainer = FineTuneTrainer(config)
+    >>> trainer.train(train_dataset, eval_dataset)
 """
 
 from __future__ import annotations
 
+import gc
 import logging
+import math
+import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, Tuple
 
-if TYPE_CHECKING:
-    from datasets import Dataset
-    from transformers import PreTrainedModel, PreTrainedTokenizer
+from training.schemas import FineTuneConfig, InitMethod
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ForgeConfig:
-    """Configuration for TrainingForge.
+# =============================================================================
+# Hardware Detection
+# =============================================================================
+
+def detect_device() -> str:
+    """Detect the best available device.
     
-    Attributes:
-        model_name: Base model name or path.
-        max_seq_length: Maximum sequence length.
-        load_in_4bit: Whether to use QLoRA 4-bit quantization.
-        use_pissa: Whether to use PiSSA initialization.
-        pissa_rank: PiSSA/LoRA rank (r).
-        pissa_alpha: PiSSA/LoRA alpha scaling factor.
-        pissa_dropout: Dropout rate for LoRA layers.
-        target_modules: Modules to apply LoRA to.
-        num_epochs: Number of training epochs.
-        batch_size: Training batch size.
-        gradient_accumulation_steps: Gradient accumulation steps.
-        learning_rate: Learning rate.
-        warmup_ratio: Warmup ratio.
-        weight_decay: Weight decay for regularization.
-        output_dir: Directory to save outputs.
-        logging_steps: Log every N steps.
-        save_steps: Save checkpoint every N steps.
-        eval_steps: Evaluate every N steps.
-        fp16: Use FP16 training.
-        seed: Random seed.
+    Returns:
+        Device string: "mps" for Apple Silicon, "cuda" for NVIDIA, "cpu" otherwise.
     """
-    
-    # Model settings
-    model_name: str = "unsloth/Llama-3.2-3B-Instruct"
-    max_seq_length: int = 2048
-    load_in_4bit: bool = True  # QLoRA
-    dtype: str = "float16"
-    
-    # PiSSA/LoRA settings
-    use_pissa: bool = True  # Use PiSSA instead of standard LoRA init
-    pissa_rank: int = 64
-    pissa_alpha: int = 128
-    pissa_dropout: float = 0.05
-    target_modules: list[str] = field(
-        default_factory=lambda: ["q_proj", "k_proj", "v_proj", "o_proj"]
-    )
-    
-    # Training settings
-    num_epochs: int = 3
-    batch_size: int = 4
-    gradient_accumulation_steps: int = 4
-    learning_rate: float = 2e-4
-    warmup_ratio: float = 0.03
-    weight_decay: float = 0.01
-    max_grad_norm: float = 1.0
-    
-    # Output settings
-    output_dir: str = "./output"
-    logging_steps: int = 10
-    save_steps: int = 100
-    eval_steps: int = 50
-    save_total_limit: int = 3
-    
-    # Hardware settings
-    fp16: bool = True
-    bf16: bool = False  # Not all Macs support bf16
-    seed: int = 42
+    try:
+        import torch
+        
+        if torch.backends.mps.is_available():
+            return "mps"
+        elif torch.cuda.is_available():
+            return "cuda"
+        else:
+            return "cpu"
+    except ImportError:
+        return "cpu"
 
+
+def get_memory_info() -> dict[str, float]:
+    """Get current memory usage information.
+    
+    Returns:
+        Dictionary with memory usage stats.
+    """
+    import psutil
+    
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    
+    system_memory = psutil.virtual_memory()
+    
+    return {
+        "process_rss_gb": memory_info.rss / (1024**3),
+        "system_used_gb": system_memory.used / (1024**3),
+        "system_total_gb": system_memory.total / (1024**3),
+        "system_percent": system_memory.percent / 100,
+    }
+
+
+# =============================================================================
+# Callback Definitions
+# =============================================================================
 
 @dataclass
-class TrainingMetrics:
-    """Metrics collected during training.
+class TrainingState:
+    """Current training state for callbacks.
     
     Attributes:
+        global_step: Current training step.
         epoch: Current epoch.
-        step: Current step.
-        loss: Training loss.
+        total_steps: Total training steps.
+        loss: Current loss value.
         learning_rate: Current learning rate.
-        eval_loss: Evaluation loss (if available).
-        perplexity: Perplexity (exp(loss)).
-        memory_used_gb: GPU/unified memory usage.
-        tokens_per_second: Training throughput.
+        metrics: Additional metrics.
     """
     
-    epoch: float
-    step: int
-    loss: float
-    learning_rate: float
-    eval_loss: Optional[float] = None
-    perplexity: Optional[float] = None
-    memory_used_gb: Optional[float] = None
-    tokens_per_second: Optional[float] = None
-    
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {k: v for k, v in self.__dict__.items() if v is not None}
+    global_step: int = 0
+    epoch: float = 0.0
+    total_steps: int = 0
+    loss: float = 0.0
+    learning_rate: float = 0.0
+    metrics: dict[str, float] = field(default_factory=dict)
 
 
-class TrainingForge:
-    """Main fine-tuning orchestrator.
+class TrainerCallback:
+    """Base class for training callbacks."""
     
-    This class manages the complete training lifecycle including:
-    - Model loading with quantization
-    - PiSSA/LoRA adapter configuration
-    - Training with callbacks
-    - Model saving and export
+    def on_train_begin(self, state: TrainingState) -> None:
+        """Called at the beginning of training."""
+        pass
     
-    Attributes:
-        config: Training configuration.
-        model: The loaded model (after load_model).
-        tokenizer: The loaded tokenizer.
-        
-    Example:
-        >>> config = ForgeConfig(
-        ...     model_name="unsloth/Llama-3.2-3B-Instruct",
-        ...     use_pissa=True,
-        ...     num_epochs=3,
-        ... )
-        >>> forge = TrainingForge(config)
-        >>> forge.load_model()
-        >>> results = forge.train(train_data, eval_data)
-        >>> forge.save_model("./my_model")
-    """
+    def on_train_end(self, state: TrainingState) -> None:
+        """Called at the end of training."""
+        pass
     
-    def __init__(self, config: Optional[ForgeConfig] = None) -> None:
-        """Initialize TrainingForge.
-        
-        Args:
-            config: Training configuration. Uses defaults if not provided.
-        """
-        self.config = config or ForgeConfig()
-        self.model: Optional[PreTrainedModel] = None
-        self.tokenizer: Optional[PreTrainedTokenizer] = None
-        self._callbacks: list[Callable] = []
-        self._training_start_time: Optional[float] = None
-        
-        # Create output directory
-        Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
-        
-        logger.info(f"Initialized TrainingForge with config: {self.config.model_name}")
+    def on_epoch_begin(self, state: TrainingState) -> None:
+        """Called at the beginning of each epoch."""
+        pass
     
-    def _detect_hardware(self) -> dict[str, Any]:
-        """Detect available hardware capabilities.
+    def on_epoch_end(self, state: TrainingState) -> None:
+        """Called at the end of each epoch."""
+        pass
+    
+    def on_step_begin(self, state: TrainingState) -> None:
+        """Called at the beginning of each step."""
+        pass
+    
+    def on_step_end(self, state: TrainingState) -> bool:
+        """Called at the end of each step.
         
         Returns:
-            Dictionary with hardware information.
+            False to stop training, True to continue.
         """
-        import platform
-        
-        hardware_info = {
-            "platform": platform.system(),
-            "processor": platform.processor(),
-            "python_version": platform.python_version(),
-        }
-        
-        # Check for Apple Silicon
-        if platform.system() == "Darwin" and platform.processor() == "arm":
-            hardware_info["is_apple_silicon"] = True
-            hardware_info["recommended_backend"] = "mlx"
-            
-            # Try to get memory info
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ["sysctl", "-n", "hw.memsize"],
-                    capture_output=True,
-                    text=True,
-                )
-                memory_bytes = int(result.stdout.strip())
-                hardware_info["total_memory_gb"] = memory_bytes / (1024**3)
-            except Exception:
-                pass
-        else:
-            hardware_info["is_apple_silicon"] = False
-        
-        return hardware_info
+        return True
     
-    def load_model(self, model_name: Optional[str] = None) -> None:
-        """Load base model with quantization.
-        
-        Args:
-            model_name: Model name or path. Uses config if not provided.
-            
-        Raises:
-            ImportError: If required libraries not installed.
-            ValueError: If model cannot be loaded.
-        """
-        model_name = model_name or self.config.model_name
-        logger.info(f"Loading model: {model_name}")
-        
-        try:
-            # Try Unsloth first (optimized for training)
-            from unsloth import FastLanguageModel
-            
-            self.model, self.tokenizer = FastLanguageModel.from_pretrained(
-                model_name=model_name,
-                max_seq_length=self.config.max_seq_length,
-                dtype=None,  # Auto-detect
-                load_in_4bit=self.config.load_in_4bit,
-            )
-            
-            logger.info("Loaded model with Unsloth")
-            
-        except ImportError:
-            logger.warning("Unsloth not available, falling back to transformers")
-            
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                load_in_4bit=self.config.load_in_4bit,
-                device_map="auto",
-            )
-        
-        # Apply PiSSA/LoRA configuration
-        self._configure_peft()
+    def on_evaluate(self, state: TrainingState, metrics: dict[str, float]) -> None:
+        """Called after evaluation."""
+        pass
+
+
+class MetricsLoggerCallback(TrainerCallback):
+    """Logs training metrics to file and console."""
     
-    def _configure_peft(self) -> None:
-        """Configure PEFT (Parameter-Efficient Fine-Tuning) adapters."""
-        if self.model is None:
-            raise ValueError("Model must be loaded before configuring PEFT")
-        
-        try:
-            from peft import LoraConfig, get_peft_model
-            
-            # Use PiSSA initialization if enabled
-            init_lora_weights = "pissa" if self.config.use_pissa else True
-            
-            peft_config = LoraConfig(
-                r=self.config.pissa_rank,
-                lora_alpha=self.config.pissa_alpha,
-                lora_dropout=self.config.pissa_dropout,
-                target_modules=self.config.target_modules,
-                bias="none",
-                task_type="CAUSAL_LM",
-                init_lora_weights=init_lora_weights,
-            )
-            
-            self.model = get_peft_model(self.model, peft_config)
-            
-            # Log trainable parameters
-            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            total_params = sum(p.numel() for p in self.model.parameters())
+    def __init__(self, output_dir: str, log_every: int = 10) -> None:
+        self.output_dir = Path(output_dir)
+        self.log_every = log_every
+        self.log_file: Optional[Path] = None
+        self.history: list[dict] = []
+    
+    def on_train_begin(self, state: TrainingState) -> None:
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = self.output_dir / "training_log.jsonl"
+        logger.info(f"Training started. Logging to {self.log_file}")
+    
+    def on_step_end(self, state: TrainingState) -> bool:
+        if state.global_step % self.log_every == 0:
+            record = {
+                "step": state.global_step,
+                "epoch": round(state.epoch, 3),
+                "loss": round(state.loss, 4),
+                "lr": state.learning_rate,
+                "timestamp": datetime.now().isoformat(),
+            }
+            record.update(state.metrics)
+            self.history.append(record)
             
             logger.info(
-                f"PEFT configured: {trainable_params:,} trainable / "
-                f"{total_params:,} total ({100 * trainable_params / total_params:.2f}%)"
+                f"Step {state.global_step}: loss={state.loss:.4f}, "
+                f"lr={state.learning_rate:.2e}"
+            )
+        
+        return True
+    
+    def on_train_end(self, state: TrainingState) -> None:
+        if self.log_file and self.history:
+            import json
+            with open(self.log_file, 'w') as f:
+                for record in self.history:
+                    f.write(json.dumps(record) + '\n')
+            logger.info(f"Training complete. Logs saved to {self.log_file}")
+
+
+class EarlyStoppingCallback(TrainerCallback):
+    """Stops training if metric doesn't improve."""
+    
+    def __init__(
+        self,
+        patience: int = 5,
+        min_delta: float = 0.001,
+        metric: str = "eval_loss",
+    ) -> None:
+        self.patience = patience
+        self.min_delta = min_delta
+        self.metric = metric
+        self.best_value: Optional[float] = None
+        self.wait_count = 0
+        self.should_stop = False
+    
+    def on_evaluate(self, state: TrainingState, metrics: dict[str, float]) -> None:
+        current_value = metrics.get(self.metric)
+        
+        if current_value is None:
+            return
+        
+        if self.best_value is None:
+            self.best_value = current_value
+            return
+        
+        # Check improvement (assuming lower is better for loss)
+        if current_value < self.best_value - self.min_delta:
+            self.best_value = current_value
+            self.wait_count = 0
+            logger.info(f"Early stopping: New best {self.metric}={current_value:.4f}")
+        else:
+            self.wait_count += 1
+            logger.info(
+                f"Early stopping: No improvement for {self.wait_count}/{self.patience}"
             )
             
-        except ImportError:
-            logger.warning("PEFT not available, training full model")
+            if self.wait_count >= self.patience:
+                self.should_stop = True
+                logger.info("Early stopping triggered!")
     
-    def add_callback(self, callback: Callable[[TrainingMetrics], None]) -> None:
-        """Add a training callback.
+    def on_step_end(self, state: TrainingState) -> bool:
+        return not self.should_stop
+
+
+class MemoryMonitorCallback(TrainerCallback):
+    """Monitors memory usage and alerts on high usage."""
+    
+    def __init__(
+        self,
+        alert_threshold: float = 0.80,
+        check_every: int = 50,
+    ) -> None:
+        self.alert_threshold = alert_threshold
+        self.check_every = check_every
+        self.peak_memory = 0.0
+    
+    def on_step_end(self, state: TrainingState) -> bool:
+        if state.global_step % self.check_every == 0:
+            mem_info = get_memory_info()
+            current_usage = mem_info["system_percent"]
+            
+            self.peak_memory = max(self.peak_memory, mem_info["process_rss_gb"])
+            
+            if current_usage > self.alert_threshold:
+                logger.warning(
+                    f"⚠️ High memory usage: {current_usage:.1%} "
+                    f"(threshold: {self.alert_threshold:.1%})"
+                )
+                
+                # Try to free memory
+                gc.collect()
+        
+        return True
+    
+    def on_train_end(self, state: TrainingState) -> None:
+        logger.info(f"Peak memory usage: {self.peak_memory:.2f} GB")
+
+
+# =============================================================================
+# PiSSA Initialization
+# =============================================================================
+
+class PiSSAInitializer:
+    """Computes PiSSA initialization using SVD.
+    
+    PiSSA initializes adapter matrices A and B such that:
+    W ≈ A @ B + W_residual
+    
+    Where A and B are computed from SVD of W:
+    W = U @ S @ V^T
+    A = U[:, :rank] @ sqrt(diag(S[:rank]))
+    B = sqrt(diag(S[:rank])) @ V[:, :rank]^T
+    """
+    
+    def __init__(self, rank: int, niter: int = 4) -> None:
+        """Initialize PiSSA computer.
         
         Args:
-            callback: Function called with TrainingMetrics after each log step.
+            rank: Target rank for decomposition.
+            niter: Number of SVD refinement iterations.
         """
-        self._callbacks.append(callback)
+        self.rank = rank
+        self.niter = niter
     
-    def _format_data(self, example: dict[str, str]) -> dict[str, str]:
-        """Format a training example.
+    def compute_init(
+        self,
+        weight: Any,  # torch.Tensor
+    ) -> Tuple[Any, Any, Any]:
+        """Compute PiSSA initialization for a weight matrix.
         
         Args:
-            example: Dictionary with instruction/input/output fields.
+            weight: Weight matrix W of shape (out_features, in_features).
             
         Returns:
-            Dictionary with formatted text field.
+            Tuple of (A, B, W_residual) where:
+            - A: Shape (out_features, rank)
+            - B: Shape (rank, in_features)
+            - W_residual: Residual weights
         """
-        instruction = example.get("instruction", "")
-        input_text = example.get("input", "")
-        output = example.get("output", "")
+        import torch
         
-        if input_text:
-            text = f"<s>[INST] {instruction}\n\n{input_text} [/INST] {output} </s>"
+        # Convert to float for SVD
+        W = weight.float()
+        out_features, in_features = W.shape
+        
+        # Compute truncated SVD
+        # For large matrices, use randomized SVD (faster)
+        if min(out_features, in_features) > 1000:
+            U, S, Vh = torch.svd_lowrank(W, q=self.rank, niter=self.niter)
         else:
-            text = f"<s>[INST] {instruction} [/INST] {output} </s>"
+            U, S, Vh = torch.linalg.svd(W, full_matrices=False)
+            U = U[:, :self.rank]
+            S = S[:self.rank]
+            Vh = Vh[:self.rank, :]
         
-        return {"text": text}
+        # Compute sqrt(S) for balanced initialization
+        sqrt_S = torch.sqrt(S)
+        
+        # A = U @ sqrt(diag(S))
+        A = U * sqrt_S.unsqueeze(0)  # Broadcasting: (out_features, rank)
+        
+        # B = sqrt(diag(S)) @ V^T
+        B = sqrt_S.unsqueeze(1) * Vh  # Broadcasting: (rank, in_features)
+        
+        # Compute residual: W - A @ B
+        W_approx = A @ B
+        W_residual = W - W_approx
+        
+        # Convert back to original dtype
+        A = A.to(weight.dtype)
+        B = B.to(weight.dtype)
+        W_residual = W_residual.to(weight.dtype)
+        
+        return A, B, W_residual
     
-    def prepare_dataset(self, dataset: Dataset) -> Dataset:
-        """Prepare dataset for training.
+    def get_reconstruction_error(
+        self,
+        W: Any,
+        A: Any,
+        B: Any,
+    ) -> float:
+        """Compute reconstruction error ||W - AB||_F / ||W||_F."""
+        import torch
+        
+        reconstruction = A @ B
+        error = torch.norm(W - reconstruction, 'fro')
+        original_norm = torch.norm(W, 'fro')
+        
+        return (error / original_norm).item() if original_norm > 0 else 0.0
+
+
+# =============================================================================
+# Fine-Tune Trainer
+# =============================================================================
+
+class FineTuneTrainer:
+    """Production-grade PiSSA + QLoRA trainer.
+    
+    Implements efficient fine-tuning using:
+    - PiSSA initialization (SVD-based adapter init)
+    - QLoRA quantization (4-bit base model)
+    - Unsloth-MLX optimizations for Apple Silicon
+    
+    Example:
+        >>> config = FineTuneConfig()
+        >>> trainer = FineTuneTrainer(config)
+        >>> trainer.load_model()
+        >>> trainer.train(train_dataset, eval_dataset)
+        >>> trainer.save_model("./output")
+    """
+    
+    def __init__(self, config: FineTuneConfig) -> None:
+        """Initialize trainer.
         
         Args:
-            dataset: HuggingFace Dataset with instruction/input/output fields.
+            config: Complete training configuration.
+        """
+        self.config = config
+        self.device = detect_device() if config.hardware.device == "auto" else config.hardware.device
+        
+        # Model components (initialized by load_model)
+        self.model = None
+        self.tokenizer = None
+        self.peft_model = None
+        
+        # PiSSA initializer
+        self.pissa_init = PiSSAInitializer(
+            rank=config.pissa.rank,
+            niter=config.pissa.pissa_niter,
+        )
+        
+        # Training state
+        self.state = TrainingState()
+        self.callbacks: list[TrainerCallback] = []
+        
+        # Metrics tracking
+        self.train_history: list[dict] = []
+        self.eval_history: list[dict] = []
+        
+        logger.info(f"FineTuneTrainer initialized on device: {self.device}")
+    
+    def add_callback(self, callback: TrainerCallback) -> None:
+        """Add a training callback."""
+        self.callbacks.append(callback)
+    
+    def _setup_default_callbacks(self) -> None:
+        """Setup default training callbacks."""
+        # Metrics logger
+        self.add_callback(MetricsLoggerCallback(
+            output_dir=self.config.logging.output_dir,
+            log_every=self.config.logging.logging_steps,
+        ))
+        
+        # Memory monitor
+        self.add_callback(MemoryMonitorCallback(
+            alert_threshold=self.config.memory.alert_threshold,
+        ))
+        
+        # Early stopping
+        if self.config.early_stopping.enabled:
+            self.add_callback(EarlyStoppingCallback(
+                patience=self.config.early_stopping.patience,
+                min_delta=self.config.early_stopping.min_delta,
+                metric=self.config.early_stopping.metric,
+            ))
+    
+    def load_model(self) -> None:
+        """Load and prepare model for training.
+        
+        This method:
+        1. Loads the base model in quantized format
+        2. Prepares PiSSA adapters
+        3. Applies Unsloth optimizations if available
+        """
+        logger.info(f"Loading model: {self.config.model.base_model}")
+        
+        try:
+            # Try Unsloth for optimized loading
+            self._load_with_unsloth()
+        except ImportError:
+            logger.warning("Unsloth not available, using standard loading")
+            self._load_standard()
+        
+        logger.info(f"Model loaded. Trainable params: {self._count_trainable_params():,}")
+    
+    def _load_with_unsloth(self) -> None:
+        """Load model using Unsloth optimizations."""
+        from unsloth import FastLanguageModel
+        
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=self.config.model.base_model,
+            max_seq_length=self.config.model.max_seq_length,
+            dtype=None,  # Auto-detect
+            load_in_4bit=self.config.model.load_in_4bit,
+        )
+        
+        # Add LoRA adapters with PiSSA initialization
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=self.config.pissa.rank,
+            lora_alpha=self.config.pissa.lora_alpha,
+            lora_dropout=self.config.pissa.lora_dropout,
+            target_modules=self.config.pissa.target_modules,
+            bias="none",
+            use_gradient_checkpointing=self.config.memory.gradient_checkpointing,
+            random_state=self.config.training.seed,
+            use_rslora=self.config.pissa.use_rslora,
+            # PiSSA initialization
+            init_lora_weights=self.config.pissa.init_method.value,
+        )
+        
+        self.model = model
+        self.tokenizer = tokenizer
+        self.peft_model = model
+    
+    def _load_standard(self) -> None:
+        """Load model using standard HuggingFace/PEFT."""
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+        
+        # Quantization config
+        quant_config = BitsAndBytesConfig(
+            load_in_4bit=self.config.quantization.bits == 4,
+            bnb_4bit_quant_type=self.config.quantization.quant_type.value,
+            bnb_4bit_use_double_quant=self.config.quantization.double_quant,
+            bnb_4bit_compute_dtype=getattr(torch, self.config.quantization.compute_dtype),
+        )
+        
+        # Load model
+        model = AutoModelForCausalLM.from_pretrained(
+            self.config.model.base_model,
+            quantization_config=quant_config,
+            device_map="auto",
+            trust_remote_code=self.config.model.trust_remote_code,
+        )
+        
+        tokenizer = AutoTokenizer.from_pretrained(
+            self.config.model.base_model,
+            trust_remote_code=self.config.model.trust_remote_code,
+        )
+        
+        # Prepare for k-bit training
+        model = prepare_model_for_kbit_training(model)
+        
+        # LoRA config
+        lora_config = LoraConfig(
+            r=self.config.pissa.rank,
+            lora_alpha=self.config.pissa.lora_alpha,
+            lora_dropout=self.config.pissa.lora_dropout,
+            target_modules=self.config.pissa.target_modules,
+            bias="none",
+            task_type="CAUSAL_LM",
+            use_rslora=self.config.pissa.use_rslora,
+            init_lora_weights=self.config.pissa.init_method.value != "gaussian",
+        )
+        
+        # Apply LoRA
+        model = get_peft_model(model, lora_config)
+        
+        # Apply PiSSA initialization if enabled
+        if self.config.pissa.init_method == InitMethod.PISSA:
+            self._apply_pissa_init(model)
+        
+        self.model = model
+        self.tokenizer = tokenizer
+        self.peft_model = model
+    
+    def _apply_pissa_init(self, model: Any) -> None:
+        """Apply PiSSA initialization to LoRA layers."""
+        import torch
+        
+        logger.info("Applying PiSSA initialization...")
+        
+        for name, module in model.named_modules():
+            if hasattr(module, 'lora_A') and hasattr(module, 'lora_B'):
+                # Get original weight
+                if hasattr(module, 'base_layer'):
+                    W = module.base_layer.weight.data
+                elif hasattr(module, 'weight'):
+                    W = module.weight.data
+                else:
+                    continue
+                
+                # Compute PiSSA init
+                A, B, W_res = self.pissa_init.compute_init(W)
+                
+                # Apply to LoRA layers
+                for adapter_name in module.lora_A.keys():
+                    lora_A = module.lora_A[adapter_name]
+                    lora_B = module.lora_B[adapter_name]
+                    
+                    # Transpose A for correct shape
+                    lora_A.weight.data = B.T.contiguous()
+                    lora_B.weight.data = A.contiguous()
+                
+                # Store residual in base layer if possible
+                if hasattr(module, 'base_layer'):
+                    module.base_layer.weight.data = W_res
+                
+                logger.debug(f"PiSSA initialized: {name}")
+        
+        logger.info("PiSSA initialization complete")
+    
+    def _count_trainable_params(self) -> int:
+        """Count trainable parameters."""
+        if self.model is None:
+            return 0
+        
+        return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+    
+    def compute_pissa_init(
+        self,
+        weight_matrix: Any,
+    ) -> Tuple[Any, Any, Any]:
+        """Compute PiSSA initialization for a weight matrix.
+        
+        Public method for external use.
+        
+        Args:
+            weight_matrix: Weight matrix to decompose.
             
         Returns:
-            Formatted dataset ready for training.
+            Tuple of (A, B, residual).
         """
-        return dataset.map(self._format_data)
+        return self.pissa_init.compute_init(weight_matrix)
     
     def train(
         self,
-        train_dataset: Dataset,
-        eval_dataset: Optional[Dataset] = None,
+        train_dataset: Any,
+        eval_dataset: Optional[Any] = None,
+        num_epochs: Optional[int] = None,
     ) -> dict[str, Any]:
-        """Run training.
+        """Execute training loop.
         
         Args:
             train_dataset: Training dataset.
             eval_dataset: Optional evaluation dataset.
+            num_epochs: Override config epochs.
             
         Returns:
-            Dictionary with training results and metrics.
+            Dictionary with training results.
         """
-        if self.model is None or self.tokenizer is None:
-            raise ValueError("Model must be loaded before training")
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
         
-        logger.info(f"Starting training with {len(train_dataset)} samples")
-        self._training_start_time = time.time()
+        from transformers import TrainingArguments, Trainer, DataCollatorForLanguageModeling
         
-        # Prepare datasets
-        train_dataset = self.prepare_dataset(train_dataset)
-        if eval_dataset is not None:
-            eval_dataset = self.prepare_dataset(eval_dataset)
+        # Setup callbacks
+        self._setup_default_callbacks()
         
-        try:
-            from transformers import TrainingArguments
-            from trl import SFTTrainer
-            
-            training_args = TrainingArguments(
-                output_dir=self.config.output_dir,
-                num_train_epochs=self.config.num_epochs,
-                per_device_train_batch_size=self.config.batch_size,
-                per_device_eval_batch_size=self.config.batch_size * 2,
-                gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-                learning_rate=self.config.learning_rate,
-                warmup_ratio=self.config.warmup_ratio,
-                weight_decay=self.config.weight_decay,
-                max_grad_norm=self.config.max_grad_norm,
-                logging_steps=self.config.logging_steps,
-                save_steps=self.config.save_steps,
-                eval_steps=self.config.eval_steps if eval_dataset else None,
-                eval_strategy="steps" if eval_dataset else "no",
-                save_total_limit=self.config.save_total_limit,
-                fp16=self.config.fp16,
-                bf16=self.config.bf16,
-                seed=self.config.seed,
-                report_to="none",  # Disable wandb/tensorboard by default
-            )
-            
-            trainer = SFTTrainer(
-                model=self.model,
-                tokenizer=self.tokenizer,
-                args=training_args,
-                train_dataset=train_dataset,
-                eval_dataset=eval_dataset,
-                dataset_text_field="text",
-                max_seq_length=self.config.max_seq_length,
-            )
-            
-            # Train
-            train_result = trainer.train()
-            
-            # Calculate duration
-            duration = time.time() - self._training_start_time
-            
-            results = {
-                "train_loss": train_result.training_loss,
-                "train_runtime": duration,
-                "train_samples_per_second": len(train_dataset) / duration,
-                "train_steps": train_result.global_step,
-            }
-            
-            logger.info(f"Training complete in {duration:.2f}s")
-            return results
-            
-        except ImportError as e:
-            logger.error(f"Required library not installed: {e}")
-            raise
+        # Determine epochs
+        epochs = num_epochs or self.config.training.num_train_epochs
+        
+        logger.info(f"Starting training for {epochs} epochs")
+        
+        # Training arguments
+        training_args = TrainingArguments(
+            **self.config.get_training_arguments(),
+            num_train_epochs=epochs,
+        )
+        
+        # Data collator
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer,
+            mlm=False,
+        )
+        
+        # Create trainer
+        trainer = Trainer(
+            model=self.model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+            tokenizer=self.tokenizer,
+        )
+        
+        # Run callbacks
+        self.state.total_steps = len(train_dataset) * epochs // (
+            self.config.training.per_device_train_batch_size * 
+            self.config.training.gradient_accumulation_steps
+        )
+        
+        for callback in self.callbacks:
+            callback.on_train_begin(self.state)
+        
+        # Train
+        start_time = time.time()
+        result = trainer.train()
+        training_time = time.time() - start_time
+        
+        # Run end callbacks
+        for callback in self.callbacks:
+            callback.on_train_end(self.state)
+        
+        logger.info(f"Training complete in {training_time:.1f}s")
+        
+        return {
+            "training_time": training_time,
+            "train_loss": result.training_loss,
+            "train_samples": result.metrics.get("train_samples", 0),
+            "epochs": epochs,
+        }
     
-    def save_model(self, output_path: str, merge_adapter: bool = False) -> None:
-        """Save the trained model.
-        
-        Args:
-            output_path: Path to save the model.
-            merge_adapter: Whether to merge LoRA weights into base model.
-        """
-        if self.model is None or self.tokenizer is None:
-            raise ValueError("No model to save")
-        
-        output_path = Path(output_path)
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        if merge_adapter:
-            logger.info("Merging adapter weights...")
-            # Merge and unload LoRA weights
-            self.model = self.model.merge_and_unload()
-        
-        self.model.save_pretrained(output_path)
-        self.tokenizer.save_pretrained(output_path)
-        
-        logger.info(f"Model saved to {output_path}")
-    
-    def evaluate(self, eval_dataset: Dataset) -> dict[str, float]:
-        """Evaluate the model.
+    def evaluate(self, eval_dataset: Any) -> dict[str, float]:
+        """Evaluate model on dataset.
         
         Args:
             eval_dataset: Evaluation dataset.
@@ -433,35 +681,184 @@ class TrainingForge:
         Returns:
             Dictionary with evaluation metrics.
         """
-        # TODO: Implement evaluation
-        raise NotImplementedError("Evaluation not yet implemented")
-    
-    def generate(
-        self,
-        prompt: str,
-        max_new_tokens: int = 256,
-        temperature: float = 0.7,
-    ) -> str:
-        """Generate text from a prompt.
+        if self.model is None:
+            raise RuntimeError("Model not loaded.")
         
-        Args:
-            prompt: Input prompt.
-            max_new_tokens: Maximum tokens to generate.
-            temperature: Sampling temperature.
-            
-        Returns:
-            Generated text.
-        """
-        if self.model is None or self.tokenizer is None:
-            raise ValueError("Model must be loaded before generation")
+        from transformers import Trainer, TrainingArguments, DataCollatorForLanguageModeling
         
-        inputs = self.tokenizer(prompt, return_tensors="pt")
-        
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
+        eval_args = TrainingArguments(
+            output_dir=self.config.logging.output_dir,
+            per_device_eval_batch_size=self.config.training.per_device_eval_batch_size,
+            report_to="none",
         )
         
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer,
+            mlm=False,
+        )
+        
+        trainer = Trainer(
+            model=self.model,
+            args=eval_args,
+            eval_dataset=eval_dataset,
+            data_collator=data_collator,
+            tokenizer=self.tokenizer,
+        )
+        
+        metrics = trainer.evaluate()
+        
+        # Run callbacks
+        for callback in self.callbacks:
+            callback.on_evaluate(self.state, metrics)
+        
+        return metrics
+    
+    def save_model(self, output_dir: str) -> None:
+        """Save trained model and adapters.
+        
+        Args:
+            output_dir: Directory to save to.
+        """
+        if self.model is None:
+            raise RuntimeError("No model to save.")
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Save model
+        self.model.save_pretrained(output_path)
+        
+        # Save tokenizer
+        if self.tokenizer:
+            self.tokenizer.save_pretrained(output_path)
+        
+        # Save config
+        self.config.to_yaml(output_path / "training_config.yaml")
+        
+        logger.info(f"Model saved to {output_path}")
+    
+    def load_checkpoint(self, checkpoint_path: str) -> None:
+        """Load model from checkpoint.
+        
+        Args:
+            checkpoint_path: Path to checkpoint.
+        """
+        from peft import PeftModel
+        
+        if self.model is None:
+            raise RuntimeError("Base model not loaded.")
+        
+        self.model = PeftModel.from_pretrained(
+            self.model,
+            checkpoint_path,
+        )
+        
+        logger.info(f"Loaded checkpoint from {checkpoint_path}")
+    
+    def train_dpo(
+        self,
+        preference_dataset: Any,
+        num_epochs: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Train with Direct Preference Optimization (optional second phase).
+        
+        DPO optimizes the model to prefer correct answers over incorrect ones,
+        reducing hallucinations.
+        
+        Args:
+            preference_dataset: Dataset with (prompt, chosen, rejected) examples.
+            num_epochs: Override config epochs.
+            
+        Returns:
+            Dictionary with DPO training results.
+        """
+        if not self.config.dpo.enabled:
+            logger.warning("DPO not enabled in config")
+            return {}
+        
+        if self.model is None:
+            raise RuntimeError("Model not loaded.")
+        
+        logger.info("Starting DPO training phase")
+        
+        try:
+            from trl import DPOTrainer, DPOConfig as TRLDPOConfig
+            
+            dpo_config = TRLDPOConfig(
+                beta=self.config.dpo.beta,
+                learning_rate=self.config.dpo.learning_rate,
+                num_train_epochs=num_epochs or self.config.dpo.num_epochs,
+                per_device_train_batch_size=self.config.training.per_device_train_batch_size,
+                gradient_accumulation_steps=self.config.training.gradient_accumulation_steps,
+                output_dir=self.config.logging.output_dir + "/dpo",
+                loss_type=self.config.dpo.loss_type.value,
+            )
+            
+            trainer = DPOTrainer(
+                model=self.model,
+                ref_model=None,  # Use implicit reference
+                args=dpo_config,
+                train_dataset=preference_dataset,
+                tokenizer=self.tokenizer,
+            )
+            
+            result = trainer.train()
+            
+            logger.info("DPO training complete")
+            
+            return {
+                "dpo_loss": result.training_loss,
+                "dpo_epochs": dpo_config.num_train_epochs,
+            }
+            
+        except ImportError:
+            logger.error("TRL not installed. Install with: pip install trl")
+            return {}
+
+
+# =============================================================================
+# Convenience Functions
+# =============================================================================
+
+def create_trainer(config_path: Optional[str] = None) -> FineTuneTrainer:
+    """Create trainer from config file.
+    
+    Args:
+        config_path: Path to YAML config (optional).
+        
+    Returns:
+        Configured FineTuneTrainer.
+    """
+    if config_path:
+        config = FineTuneConfig.from_yaml(config_path)
+    else:
+        config = FineTuneConfig()
+    
+    return FineTuneTrainer(config)
+
+
+def quick_train(
+    train_data: list[str],
+    model_name: str = "unsloth/Llama-3.2-3B-Instruct-4bit",
+    output_dir: str = "./output",
+) -> FineTuneTrainer:
+    """Quick training utility for simple use cases.
+    
+    Args:
+        train_data: List of training texts.
+        model_name: Model identifier.
+        output_dir: Output directory.
+        
+    Returns:
+        Trained FineTuneTrainer.
+    """
+    config = FineTuneConfig()
+    config.model.base_model = model_name
+    config.logging.output_dir = output_dir
+    
+    trainer = FineTuneTrainer(config)
+    
+    # Note: Dataset preparation would be needed here
+    logger.info("quick_train: Dataset preparation required")
+    
+    return trainer

@@ -1,69 +1,255 @@
-# AI Forge - PiSSA Configuration
-# Principal Singular values and Singular vectors Adaptation
-# Reference: https://arxiv.org/abs/2404.02948
+# PiSSA + QLoRA Training Configuration
+# Optimized for Apple Silicon (M1/M2/M3) with Unified Memory
+#
+# THEORY:
+# PiSSA (Principal singular components Initialization for PEFT): 
+#   Instead of random Gaussian initialization (LoRA), PiSSA initializes
+#   adapter matrices using principal singular components via SVD.
+#   Benefits: 3-5x faster convergence, +5% accuracy on code benchmarks.
+#
+# QLoRA (Quantized LoRA):
+#   Freezes base model in 4-bit NF4 precision, trains only adapters.
+#   Reduces memory by 75%, enabling 7B model training on 8GB RAM.
 
-# PiSSA provides 3-5x faster convergence than standard LoRA
-# with +5.16% average accuracy improvement
+# =============================================================================
+# Model Configuration
+# =============================================================================
+model:
+  # Base model from Unsloth (optimized for Mac)
+  base_model: "unsloth/Llama-3.2-3B-Instruct-4bit"
+  
+  # Maximum sequence length (context window)
+  max_seq_length: 2048
+  
+  # Model dtype (auto-detect for Apple Silicon)
+  dtype: "auto"
+  
+  # Load in 4-bit quantized format
+  load_in_4bit: true
+  
+  # Trust remote code (for custom architectures)
+  trust_remote_code: true
 
+# =============================================================================
+# PiSSA Configuration (Key Innovation)
+# =============================================================================
 pissa:
-  enabled: true
+  # Initialization method: "pissa" (SVD-based) vs "gaussian" (standard LoRA)
+  init_method: "pissa"
   
-  # Core hyperparameters
-  rank: 64  # r: dimensionality of low-rank matrices
-  alpha: 128  # scaling factor (alpha/r determines update magnitude)
-  dropout: 0.05  # LoRA dropout for regularization
+  # Rank of adapter matrices
+  # Higher ranks capture more information but use more memory
+  # PiSSA can use higher ranks stably (64-128) vs LoRA (16-32)
+  rank: 64
   
-  # Target modules for attention layers
+  # Scaling factor (typically 2x rank)
+  # Higher alpha = stronger adapter influence
+  lora_alpha: 128
+  
+  # Dropout for regularization
+  lora_dropout: 0.05
+  
+  # Target modules to adapt
+  # These are the attention projection matrices
   target_modules:
     - "q_proj"  # Query projection
     - "k_proj"  # Key projection
     - "v_proj"  # Value projection
     - "o_proj"  # Output projection
-    # Optional: MLP layers (increases parameters but may improve quality)
+    # Optional: Include MLP layers for more capacity
     # - "gate_proj"
     # - "up_proj"
     # - "down_proj"
   
-  # SVD initialization settings
-  svd:
-    # Use PiSSA's SVD-based initialization
-    init_method: "pissa"  # pissa | lora_default | gaussian
-    # Number of power iterations for SVD approximation
-    n_power_iterations: 4
-    # Random seed for reproducibility
-    seed: 42
-    
-  # Training dynamics
-  training:
-    # Use residual learning (recommended for PiSSA)
-    use_residual: true
-    # Scale factor for initialization
-    scaling: "alpha_over_r"  # alpha_over_r | rsqrt_r | fixed
-    # Bias handling
-    bias: "none"  # none | all | lora_only
-    
-# Comparison notes (from research):
-# 
-# Technique | Convergence | Accuracy | Memory | Complexity
-# ----------|-------------|----------|--------|------------
-# LoRA      | Baseline    | Baseline | 60%↓   | Low
-# PiSSA     | 3-5x faster | +5.16%   | 60%↓   | Medium
-# QLoRA     | Same        | ~Same    | 75%↓   | Medium
-# RoRA      | 2x faster   | +3%      | 60%↓   | High
-#
-# AI Forge uses PiSSA + QLoRA for optimal Mac performance
+  # Use RSLoRA scaling (divide by sqrt(rank))
+  # Improves stability at higher ranks
+  use_rslora: true
+  
+  # PiSSA-specific: Number of iterations for SVD refinement
+  pissa_niter: 4
 
-# Advanced settings
-advanced:
-  # Merge strategy after training
-  merge_strategy: "weighted"  # simple | weighted | svd_merge
+# =============================================================================
+# Quantization Configuration
+# =============================================================================
+quantization:
+  # Quantization bits (4-bit is optimal for Mac)
+  bits: 4
   
-  # Adapter saving format
-  save_format: "safetensors"  # safetensors | pytorch
+  # Quantization type
+  # "nf4": Normal Float 4-bit (best for most cases)
+  # "fp4": Pure 4-bit floating point
+  quant_type: "nf4"
   
-  # Checkpoint frequency
-  checkpoint_steps: 100
+  # Double quantization (quantize the quantization constants)
+  # Reduces memory by ~0.3GB with minimal quality loss
+  double_quant: true
   
-  # Evaluation during training
-  eval_strategy: "steps"
+  # Compute dtype for matrix multiplications
+  compute_dtype: "bfloat16"
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  # Learning rate (PiSSA works well with higher LR than LoRA)
+  learning_rate: 2e-4
+  
+  # Learning rate scheduler
+  lr_scheduler_type: "cosine"
+  
+  # Warmup steps (or ratio)
+  warmup_steps: 100
+  warmup_ratio: 0.03
+  
+  # Weight decay for regularization
+  weight_decay: 0.01
+  
+  # Maximum gradient norm (gradient clipping)
+  max_grad_norm: 1.0
+  
+  # Optimizer: 8-bit AdamW for memory efficiency
+  optimizer: "adamw_8bit"
+  
+  # Batch size per device
+  # Mac optimized: 1-4 depending on model size and RAM
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  
+  # Gradient accumulation
+  # Effective batch = batch_size * gradient_accumulation_steps
+  # Higher values = more stable training, less memory
+  gradient_accumulation_steps: 4
+  
+  # Number of training epochs
+  num_train_epochs: 3
+  
+  # Maximum training steps (overrides epochs if set)
+  max_steps: -1  # -1 means use epochs
+  
+  # Seed for reproducibility
+  seed: 42
+
+# =============================================================================
+# Evaluation Configuration
+# =============================================================================
+evaluation:
+  # Evaluation strategy: "steps", "epoch", or "no"
+  strategy: "steps"
+  
+  # Evaluate every N steps (if strategy is "steps")
   eval_steps: 50
+  
+  # Number of predictions to log
+  eval_accumulation_steps: 4
+
+# =============================================================================
+# Checkpointing Configuration
+# =============================================================================
+checkpoints:
+  # Save strategy: "steps", "epoch", or "no"
+  save_strategy: "steps"
+  
+  # Save every N steps
+  save_steps: 100
+  
+  # Keep only last N checkpoints
+  save_total_limit: 3
+  
+  # Load best model at end of training
+  load_best_model_at_end: true
+  
+  # Metric for best model selection
+  metric_for_best_model: "eval_loss"
+  
+  # Greater is better for metric
+  greater_is_better: false
+  
+  # Resume from checkpoint path (null = start fresh)
+  resume_from_checkpoint: null
+
+# =============================================================================
+# Early Stopping Configuration
+# =============================================================================
+early_stopping:
+  # Enable early stopping
+  enabled: true
+  
+  # Patience: number of evaluations without improvement before stopping
+  patience: 5
+  
+  # Minimum delta: minimum change to qualify as improvement
+  min_delta: 0.001
+  
+  # Metric to monitor
+  metric: "eval_loss"
+
+# =============================================================================
+# Memory Management (Critical for Mac)
+# =============================================================================
+memory:
+  # Memory alert threshold (fraction of total)
+  alert_threshold: 0.80
+  
+  # Enable gradient checkpointing (trades compute for memory)
+  gradient_checkpointing: true
+  
+  # Use CPU offload for optimizer states
+  cpu_offload: false
+  
+  # Empty cache between batches
+  empty_cache_steps: 10
+  
+  # Maximum memory fraction to use
+  max_memory_fraction: 0.90
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  # Logging steps
+  logging_steps: 10
+  
+  # Log to console and file
+  log_level: "info"
+  
+  # Output directory for logs
+  output_dir: "./output"
+  
+  # Run name for tracking
+  run_name: null  # Auto-generated if null
+  
+  # Report to (tensorboard, wandb, etc.)
+  report_to: "tensorboard"
+
+# =============================================================================
+# DPO Configuration (Optional Second Phase)
+# =============================================================================
+dpo:
+  # Enable DPO phase after SFT
+  enabled: false
+  
+  # Beta parameter (KL penalty strength)
+  beta: 0.1
+  
+  # Learning rate for DPO (typically lower than SFT)
+  learning_rate: 5e-5
+  
+  # Number of DPO epochs
+  num_epochs: 1
+  
+  # DPO loss type: "sigmoid", "hinge", "ipo"
+  loss_type: "sigmoid"
+
+# =============================================================================
+# Hardware Detection (Auto-configured at runtime)
+# =============================================================================
+hardware:
+  # Device (auto-detect: cuda, mps, cpu)
+  device: "auto"
+  
+  # Mixed precision training
+  fp16: false
+  bf16: true  # Preferred for Apple Silicon
+  
+  # Number of workers for data loading
+  dataloader_num_workers: 0  # 0 for Mac (no multiprocessing overhead)
