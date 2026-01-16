@@ -1,14 +1,20 @@
-"""Data Validator - Quality checks for training data.
+"""Data Validator - Comprehensive validation and quality scoring pipeline.
 
-This module provides comprehensive validation for training data,
-including deduplication, token length validation, format verification,
-and quality scoring.
+This module provides validation, quality scoring, and filtering for training data,
+ensuring high-quality examples for LLM fine-tuning.
+
+Key Features:
+    - Code block validation (syntax, docstring, length)
+    - RAFT example validation (oracle relevance, distractor irrelevance)
+    - Multi-dimensional quality scoring
+    - Duplicate detection
+    - Quality report generation
 
 Example:
-    >>> validator = DataValidator(data)
-    >>> results = validator.validate_all()
-    >>> if results.is_valid:
-    ...     cleaned_data = validator.get_cleaned_data()
+    >>> from data_pipeline.validator import DataValidator, ValidationConfig
+    >>> validator = DataValidator(ValidationConfig())
+    >>> result = validator.validate_code_block(block)
+    >>> metrics = validator.score_data_quality(dataset)
 """
 
 from __future__ import annotations
@@ -16,376 +22,747 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import statistics
 from collections import Counter
-from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Optional
+
+from data_pipeline.schemas.code_blocks import CodeBlock
+from data_pipeline.schemas.metrics import (
+    DataQualityMetrics,
+    FilteringStats,
+    QualityScore,
+    ValidationConfig,
+    ValidationResult,
+)
+from data_pipeline.schemas.raft_examples import (
+    Difficulty,
+    QuestionType,
+    RAFTDataset,
+    RAFTExample,
+)
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ValidationResult:
-    """Results from data validation.
+# =============================================================================
+# Text Similarity Utilities
+# =============================================================================
+
+def compute_text_hash(text: str) -> str:
+    """Compute hash of text for duplicate detection."""
+    normalized = re.sub(r'\s+', ' ', text.lower().strip())
+    return hashlib.md5(normalized.encode()).hexdigest()
+
+
+def jaccard_similarity(text1: str, text2: str) -> float:
+    """Compute Jaccard similarity between texts."""
+    words1 = set(re.findall(r'\w+', text1.lower()))
+    words2 = set(re.findall(r'\w+', text2.lower()))
     
-    Attributes:
-        is_valid: Whether the data passed all critical checks.
-        total_samples: Total number of samples validated.
-        valid_samples: Number of samples that passed validation.
-        errors: List of critical errors.
-        warnings: List of non-critical warnings.
-        stats: Various statistics about the data.
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = len(words1 & words2)
+    union = len(words1 | words2)
+    
+    return intersection / union if union > 0 else 0.0
+
+
+def compute_relevance(query: str, document: str) -> float:
+    """Compute relevance score between query and document.
+    
+    Uses keyword overlap and structure matching.
     """
+    # Extract key terms from query
+    query_terms = set(re.findall(r'\w+', query.lower()))
+    doc_terms = set(re.findall(r'\w+', document.lower()))
     
-    is_valid: bool
-    total_samples: int
-    valid_samples: int
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    stats: dict[str, Any] = field(default_factory=dict)
+    if not query_terms:
+        return 0.5
     
-    def summary(self) -> str:
-        """Generate a summary string."""
-        status = "✅ VALID" if self.is_valid else "❌ INVALID"
-        return (
-            f"{status}\n"
-            f"Total samples: {self.total_samples}\n"
-            f"Valid samples: {self.valid_samples} "
-            f"({self.valid_samples/self.total_samples*100:.1f}%)\n"
-            f"Errors: {len(self.errors)}\n"
-            f"Warnings: {len(self.warnings)}"
-        )
+    # Term overlap
+    overlap = len(query_terms & doc_terms)
+    term_score = overlap / len(query_terms) if query_terms else 0
+    
+    # Check if document contains function/class names from query
+    name_pattern = r'\b([a-z_][a-z0-9_]*)\b'
+    query_names = set(re.findall(name_pattern, query.lower()))
+    doc_names = set(re.findall(name_pattern, document.lower()))
+    
+    name_overlap = len(query_names & doc_names)
+    name_score = name_overlap / len(query_names) if query_names else 0
+    
+    # Weighted combination
+    return 0.6 * term_score + 0.4 * name_score
 
 
-@dataclass
-class ValidatorConfig:
-    """Configuration for DataValidator.
+# =============================================================================
+# Code Block Validation
+# =============================================================================
+
+def validate_code_syntax(code: str, language: str) -> tuple[bool, Optional[str]]:
+    """Validate code syntax.
     
-    Attributes:
-        min_instruction_length: Minimum chars for instruction field.
-        max_instruction_length: Maximum chars for instruction field.
-        min_output_length: Minimum chars for output field.
-        max_output_length: Maximum chars for output field.
-        max_token_length: Maximum total tokens per sample.
-        min_samples: Minimum number of samples required.
-        required_fields: Fields that must be present.
-        allow_empty_input: Whether input field can be empty.
-        min_quality_score: Minimum quality score threshold.
+    Args:
+        code: Source code to validate.
+        language: Programming language.
+        
+    Returns:
+        Tuple of (is_valid, error_message).
     """
+    if language == "python":
+        try:
+            compile(code, "<string>", "exec")
+            return True, None
+        except SyntaxError as e:
+            return False, f"Syntax error at line {e.lineno}: {e.msg}"
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
     
-    min_instruction_length: int = 10
-    max_instruction_length: int = 1000
-    min_output_length: int = 20
-    max_output_length: int = 8000
-    max_token_length: int = 2048
-    min_samples: int = 100
-    required_fields: list[str] = field(
-        default_factory=lambda: ["instruction", "output"]
-    )
-    allow_empty_input: bool = True
-    min_quality_score: float = 0.3
+    # For other languages, perform basic structure checks
+    if language in ("javascript", "typescript", "java", "go"):
+        # Check for balanced braces
+        open_count = code.count('{')
+        close_count = code.count('}')
+        if open_count != close_count:
+            return False, f"Unbalanced braces: {open_count} open, {close_count} close"
+        
+        # Check for balanced parentheses
+        open_paren = code.count('(')
+        close_paren = code.count(')')
+        if open_paren != close_paren:
+            return False, f"Unbalanced parentheses: {open_paren} open, {close_paren} close"
+    
+    return True, None
 
 
-class DataValidator:
-    """Validates and cleans training data for fine-tuning.
+def validate_code_block(
+    block: CodeBlock,
+    config: Optional[ValidationConfig] = None,
+) -> tuple[bool, list[str]]:
+    """Validate a code block.
     
-    This class performs comprehensive validation including:
-    - Format and field checks
-    - Length validation
-    - Deduplication
-    - Quality scoring
-    - Character encoding validation
+    Checks:
+    - Non-empty source code
+    - Syntactically valid (for Python)
+    - Has docstring (if required)
+    - Reasonable token length
     
-    Attributes:
-        data: List of training samples.
+    Args:
+        block: Code block to validate.
         config: Validation configuration.
         
+    Returns:
+        Tuple of (is_valid, error_messages).
+    """
+    config = config or ValidationConfig()
+    errors: list[str] = []
+    
+    # Check non-empty
+    if not block.source_code or not block.source_code.strip():
+        errors.append("Empty source code")
+        return False, errors
+    
+    # Check token length
+    token_count = block.token_count
+    if token_count < config.min_code_tokens:
+        errors.append(f"Too few tokens: {token_count} < {config.min_code_tokens}")
+    
+    if token_count > config.max_code_tokens:
+        errors.append(f"Too many tokens: {token_count} > {config.max_code_tokens}")
+    
+    # Check docstring
+    if config.require_docstring and not block.has_docstring:
+        errors.append("Missing docstring")
+    
+    # Check syntax
+    if config.check_syntax:
+        is_valid_syntax, syntax_error = validate_code_syntax(
+            block.source_code, block.language
+        )
+        if not is_valid_syntax:
+            errors.append(f"Invalid syntax: {syntax_error}")
+    
+    # Check name
+    if not block.name or block.name.strip() == "":
+        errors.append("Missing block name")
+    
+    return len(errors) == 0, errors
+
+
+# =============================================================================
+# RAFT Example Validation
+# =============================================================================
+
+def validate_raft_example(
+    example: RAFTExample | dict[str, Any],
+    config: Optional[ValidationConfig] = None,
+) -> tuple[bool, list[str]]:
+    """Validate a RAFT training example.
+    
+    Checks:
+    - Oracle documents are relevant to query
+    - Distractor documents are sufficiently irrelevant
+    - Reasoning cites oracle documents
+    - Answer is coherent
+    
+    Args:
+        example: RAFT example to validate.
+        config: Validation configuration.
+        
+    Returns:
+        Tuple of (is_valid, error_messages).
+    """
+    config = config or ValidationConfig()
+    errors: list[str] = []
+    
+    # Handle dict or RAFTExample
+    if isinstance(example, dict):
+        question = example.get("question", "")
+        oracle_docs = example.get("oracle_documents", [])
+        distractor_docs = example.get("distractor_documents", [])
+        reasoning = example.get("reasoning", "")
+        answer = example.get("final_answer", "")
+    else:
+        question = example.question
+        oracle_docs = example.oracle_documents
+        distractor_docs = example.distractor_documents
+        reasoning = example.reasoning
+        answer = example.final_answer
+    
+    # Check has question
+    if not question or len(question.strip()) < 10:
+        errors.append("Question too short or missing")
+    
+    # Check has oracle documents
+    if not oracle_docs:
+        errors.append("No oracle documents")
+    
+    # Check oracle relevance
+    for i, doc in enumerate(oracle_docs):
+        doc_code = doc.get("source_code", "") if isinstance(doc, dict) else getattr(doc, "source_code", "")
+        relevance = compute_relevance(question, doc_code)
+        
+        if relevance < config.min_oracle_relevance * 0.5:  # Allow some slack
+            errors.append(f"Oracle doc {i+1} has low relevance: {relevance:.2f}")
+    
+    # Check distractor irrelevance
+    for i, doc in enumerate(distractor_docs):
+        doc_code = doc.get("source_code", "") if isinstance(doc, dict) else getattr(doc, "source_code", "")
+        relevance = compute_relevance(question, doc_code)
+        
+        if relevance > config.max_distractor_relevance * 2:  # Allow some slack
+            errors.append(f"Distractor {i+1} too relevant: {relevance:.2f}")
+    
+    # Check reasoning cites documents
+    if reasoning:
+        # Check if reasoning mentions any document names
+        has_citation = False
+        for doc in oracle_docs:
+            doc_name = doc.get("name", "") if isinstance(doc, dict) else getattr(doc, "name", "")
+            if doc_name and doc_name.lower() in reasoning.lower():
+                has_citation = True
+                break
+        
+        # Also check for generic citation patterns
+        if not has_citation:
+            citation_patterns = [
+                r"looking at",
+                r"examining",
+                r"from the code",
+                r"in the \w+ function",
+                r"the \w+ shows",
+            ]
+            for pattern in citation_patterns:
+                if re.search(pattern, reasoning.lower()):
+                    has_citation = True
+                    break
+        
+        if not has_citation:
+            errors.append("Reasoning lacks document citations")
+    else:
+        errors.append("Missing reasoning")
+    
+    # Check answer
+    if not answer or len(answer.strip()) < 5:
+        errors.append("Answer too short or missing")
+    
+    return len(errors) == 0, errors
+
+
+# =============================================================================
+# Quality Scoring
+# =============================================================================
+
+def score_example_quality(
+    example: RAFTExample | dict[str, Any],
+) -> QualityScore:
+    """Compute quality score for a single example.
+    
+    Args:
+        example: RAFT example to score.
+        
+    Returns:
+        Multi-dimensional quality score.
+    """
+    # Handle dict or RAFTExample
+    if isinstance(example, dict):
+        question = example.get("question", "")
+        oracle_docs = example.get("oracle_documents", [])
+        distractor_docs = example.get("distractor_documents", [])
+        reasoning = example.get("reasoning", "")
+        answer = example.get("final_answer", "")
+        difficulty = example.get("difficulty", "medium")
+        question_type = example.get("question_type", "purpose")
+    else:
+        question = example.question
+        oracle_docs = example.oracle_documents
+        distractor_docs = example.distractor_documents
+        reasoning = example.reasoning
+        answer = example.final_answer
+        difficulty = example.difficulty.value if hasattr(example.difficulty, 'value') else str(example.difficulty)
+        question_type = example.question_type.value if hasattr(example.question_type, 'value') else str(example.question_type)
+    
+    # Relevance score (oracle docs should be relevant)
+    relevance_scores = []
+    for doc in oracle_docs:
+        doc_code = doc.get("source_code", "") if isinstance(doc, dict) else getattr(doc, "source_code", "")
+        rel = compute_relevance(question, doc_code)
+        relevance_scores.append(rel)
+    
+    relevance = statistics.mean(relevance_scores) if relevance_scores else 0.5
+    
+    # Diversity score (based on question type variety in dataset context)
+    # For single example, use difficulty as proxy
+    diversity_map = {"easy": 0.6, "medium": 0.8, "hard": 0.9}
+    diversity = diversity_map.get(difficulty, 0.7)
+    
+    # Clarity score (answer length and structure)
+    clarity = 0.0
+    if answer:
+        # Good answer is 20-200 chars
+        answer_len = len(answer)
+        if 20 <= answer_len <= 200:
+            clarity = 0.9
+        elif 10 <= answer_len <= 500:
+            clarity = 0.7
+        elif answer_len > 5:
+            clarity = 0.5
+    
+    # Grounding score (reasoning cites sources)
+    grounding = 0.0
+    if reasoning:
+        # Check citation presence
+        oracle_names = []
+        for doc in oracle_docs:
+            name = doc.get("name", "") if isinstance(doc, dict) else getattr(doc, "name", "")
+            if name:
+                oracle_names.append(name.lower())
+        
+        citations_found = sum(1 for name in oracle_names if name in reasoning.lower())
+        if citations_found > 0:
+            grounding = min(0.5 + 0.25 * citations_found, 1.0)
+        
+        # Check reasoning structure
+        if "[REASONING]" in reasoning or "examining" in reasoning.lower() or "looking at" in reasoning.lower():
+            grounding += 0.2
+        
+        grounding = min(grounding, 1.0)
+    
+    return QualityScore.compute(
+        relevance=relevance,
+        diversity=diversity,
+        clarity=clarity,
+        grounding=grounding,
+    )
+
+
+def score_data_quality(
+    examples: list[RAFTExample | dict[str, Any]],
+    config: Optional[ValidationConfig] = None,
+) -> DataQualityMetrics:
+    """Compute comprehensive quality metrics for a dataset.
+    
+    Args:
+        examples: List of RAFT examples.
+        config: Validation configuration.
+        
+    Returns:
+        Complete quality metrics.
+    """
+    config = config or ValidationConfig()
+    
+    if not examples:
+        return DataQualityMetrics()
+    
+    metrics = DataQualityMetrics(
+        total_examples=len(examples),
+        difficulty_distribution={d.value: 0 for d in Difficulty},
+        question_type_distribution={q.value: 0 for q in QuestionType},
+    )
+    
+    quality_scores: list[float] = []
+    relevance_scores: list[float] = []
+    irrelevance_scores: list[float] = []
+    failure_reasons: Counter[str] = Counter()
+    
+    # Track duplicates
+    seen_hashes: set[str] = set()
+    duplicate_count = 0
+    
+    for example in examples:
+        # Extract data
+        if isinstance(example, dict):
+            question = example.get("question", "")
+            difficulty = example.get("difficulty", "medium")
+            q_type = example.get("question_type", "purpose")
+            oracle_docs = example.get("oracle_documents", [])
+            distractor_docs = example.get("distractor_documents", [])
+        else:
+            question = example.question
+            difficulty = example.difficulty.value if hasattr(example.difficulty, 'value') else str(example.difficulty)
+            q_type = example.question_type.value if hasattr(example.question_type, 'value') else str(example.question_type)
+            oracle_docs = example.oracle_documents
+            distractor_docs = example.distractor_documents
+        
+        # Update distributions
+        if difficulty in metrics.difficulty_distribution:
+            metrics.difficulty_distribution[difficulty] += 1
+        if q_type in metrics.question_type_distribution:
+            metrics.question_type_distribution[q_type] += 1
+        
+        # Check duplicates
+        q_hash = compute_text_hash(question)
+        if q_hash in seen_hashes:
+            duplicate_count += 1
+        else:
+            seen_hashes.add(q_hash)
+        
+        # Validate
+        is_valid, errors = validate_raft_example(example, config)
+        if is_valid:
+            metrics.valid_examples += 1
+        else:
+            metrics.invalid_examples += 1
+            for error in errors:
+                failure_reasons[error] += 1
+        
+        # Score quality
+        score = score_example_quality(example)
+        quality_scores.append(score.overall)
+        
+        # Track relevance/irrelevance
+        relevance_scores.append(score.relevance)
+        
+        # Compute distractor irrelevance
+        for doc in distractor_docs:
+            doc_code = doc.get("source_code", "") if isinstance(doc, dict) else getattr(doc, "source_code", "")
+            rel = compute_relevance(question, doc_code)
+            irrelevance_scores.append(1.0 - rel)  # Convert to irrelevance
+    
+    # Compute aggregate metrics
+    metrics.quality_score_mean = statistics.mean(quality_scores)
+    metrics.quality_score_std = statistics.stdev(quality_scores) if len(quality_scores) > 1 else 0.0
+    metrics.quality_score_min = min(quality_scores)
+    metrics.quality_score_max = max(quality_scores)
+    
+    metrics.duplicate_count = duplicate_count
+    metrics.duplicate_rate = duplicate_count / len(examples) if examples else 0
+    
+    metrics.avg_oracle_relevance = statistics.mean(relevance_scores) if relevance_scores else 0
+    metrics.avg_distractor_irrelevance = statistics.mean(irrelevance_scores) if irrelevance_scores else 0
+    
+    # Top failure modes (up to 5)
+    metrics.failure_modes = [f"{reason}: {count}" for reason, count in failure_reasons.most_common(5)]
+    
+    # By-dimension scores
+    metrics.by_dimension = {
+        "relevance": metrics.avg_oracle_relevance,
+        "diversity": len(set(metrics.difficulty_distribution.keys())) / 3,
+        "validity": metrics.valid_examples / max(metrics.total_examples, 1),
+    }
+    
+    return metrics
+
+
+# =============================================================================
+# Filtering
+# =============================================================================
+
+def filter_by_quality(
+    examples: list[RAFTExample | dict[str, Any]],
+    config: Optional[ValidationConfig] = None,
+) -> tuple[list[RAFTExample | dict[str, Any]], FilteringStats]:
+    """Filter examples by quality thresholds.
+    
+    Args:
+        examples: List of examples to filter.
+        config: Filtering configuration.
+        
+    Returns:
+        Tuple of (filtered_examples, filtering_stats).
+    """
+    config = config or ValidationConfig()
+    
+    filtered: list[RAFTExample | dict[str, Any]] = []
+    removal_reasons: Counter[str] = Counter()
+    
+    for example in examples:
+        # Validate
+        is_valid, errors = validate_raft_example(example, config)
+        
+        if not is_valid:
+            for error in errors:
+                removal_reasons[error] += 1
+            continue
+        
+        # Score quality
+        score = score_example_quality(example)
+        
+        if score.overall < config.min_quality_score:
+            removal_reasons["low_quality_score"] += 1
+            continue
+        
+        filtered.append(example)
+    
+    stats = FilteringStats(
+        before_count=len(examples),
+        after_count=len(filtered),
+        removed_count=len(examples) - len(filtered),
+        removal_rate=(len(examples) - len(filtered)) / max(len(examples), 1),
+        removal_reasons=dict(removal_reasons),
+    )
+    
+    return filtered, stats
+
+
+# =============================================================================
+# Quality Report Generation
+# =============================================================================
+
+def generate_quality_report(
+    examples: list[RAFTExample | dict[str, Any]],
+    config: Optional[ValidationConfig] = None,
+    include_worst_examples: int = 5,
+) -> str:
+    """Generate a Markdown quality report.
+    
+    Args:
+        examples: Dataset to analyze.
+        config: Validation configuration.
+        include_worst_examples: Number of worst examples to include.
+        
+    Returns:
+        Markdown report string.
+    """
+    config = config or ValidationConfig()
+    metrics = score_data_quality(examples, config)
+    
+    # Score all examples
+    scored_examples: list[tuple[float, dict | RAFTExample]] = []
+    for ex in examples:
+        score = score_example_quality(ex)
+        scored_examples.append((score.overall, ex))
+    
+    # Sort by score
+    scored_examples.sort(key=lambda x: x[0])
+    
+    # Build report
+    report_parts = [
+        "# Data Quality Report",
+        f"\n**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"\n**Total Examples**: {metrics.total_examples}",
+        "",
+        "---",
+        "",
+        "## Summary Metrics",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+        f"| Valid Examples | {metrics.valid_examples} ({metrics.valid_examples/max(metrics.total_examples,1):.1%}) |",
+        f"| Invalid Examples | {metrics.invalid_examples} |",
+        f"| Quality Score (Mean) | {metrics.quality_score_mean:.3f} |",
+        f"| Quality Score (Std) | {metrics.quality_score_std:.3f} |",
+        f"| Quality Score (Range) | {metrics.quality_score_min:.3f} - {metrics.quality_score_max:.3f} |",
+        f"| Duplicate Rate | {metrics.duplicate_rate:.1%} |",
+        f"| Avg Oracle Relevance | {metrics.avg_oracle_relevance:.3f} |",
+        "",
+        "---",
+        "",
+        "## Difficulty Distribution",
+        "",
+        "| Difficulty | Count | Percentage |",
+        "|------------|-------|------------|",
+    ]
+    
+    for diff, count in metrics.difficulty_distribution.items():
+        pct = count / max(metrics.total_examples, 1) * 100
+        report_parts.append(f"| {diff} | {count} | {pct:.1f}% |")
+    
+    report_parts.extend([
+        "",
+        "---",
+        "",
+        "## Question Type Distribution",
+        "",
+        "| Type | Count | Percentage |",
+        "|------|-------|------------|",
+    ])
+    
+    for qtype, count in sorted(metrics.question_type_distribution.items(), key=lambda x: -x[1]):
+        pct = count / max(metrics.total_examples, 1) * 100
+        report_parts.append(f"| {qtype} | {count} | {pct:.1f}% |")
+    
+    # Failure modes
+    if metrics.failure_modes:
+        report_parts.extend([
+            "",
+            "---",
+            "",
+            "## Failure Modes",
+            "",
+        ])
+        for mode in metrics.failure_modes:
+            report_parts.append(f"- {mode}")
+    
+    # Quality score histogram (ASCII)
+    report_parts.extend([
+        "",
+        "---",
+        "",
+        "## Quality Score Distribution",
+        "",
+        "```",
+    ])
+    
+    # Build histogram
+    buckets = [0] * 10  # 0.0-0.1, 0.1-0.2, ..., 0.9-1.0
+    for score, _ in scored_examples:
+        bucket = min(int(score * 10), 9)
+        buckets[bucket] += 1
+    
+    max_count = max(buckets) if buckets else 1
+    for i, count in enumerate(buckets):
+        bar_len = int(count / max_count * 30)
+        bar = "█" * bar_len
+        label = f"{i/10:.1f}-{(i+1)/10:.1f}"
+        report_parts.append(f"{label} |{bar} ({count})")
+    
+    report_parts.append("```")
+    
+    # Worst examples
+    if include_worst_examples > 0 and scored_examples:
+        report_parts.extend([
+            "",
+            "---",
+            "",
+            f"## Lowest Quality Examples (Bottom {include_worst_examples})",
+            "",
+        ])
+        
+        for i, (score, ex) in enumerate(scored_examples[:include_worst_examples], 1):
+            if isinstance(ex, dict):
+                question = ex.get("question", "N/A")[:80]
+                difficulty = ex.get("difficulty", "N/A")
+            else:
+                question = ex.question[:80]
+                difficulty = ex.difficulty.value if hasattr(ex.difficulty, 'value') else str(ex.difficulty)
+            
+            report_parts.extend([
+                f"### Example {i} (Score: {score:.3f})",
+                f"- **Difficulty**: {difficulty}",
+                f"- **Question**: {question}...",
+                "",
+            ])
+    
+    # Recommendations
+    report_parts.extend([
+        "",
+        "---",
+        "",
+        "## Recommendations",
+        "",
+    ])
+    
+    recommendations = []
+    
+    if metrics.quality_score_mean < 0.7:
+        recommendations.append("- ⚠️ Average quality score is low. Consider improving question/answer generation.")
+    
+    if metrics.duplicate_rate > 0.05:
+        recommendations.append(f"- ⚠️ High duplicate rate ({metrics.duplicate_rate:.1%}). Enable deduplication.")
+    
+    if metrics.invalid_examples > metrics.total_examples * 0.1:
+        recommendations.append("- ⚠️ Many invalid examples. Review validation errors above.")
+    
+    if metrics.avg_oracle_relevance < 0.6:
+        recommendations.append("- ⚠️ Low oracle relevance. Improve document retrieval.")
+    
+    if not recommendations:
+        recommendations.append("- ✅ Dataset quality looks good!")
+    
+    report_parts.extend(recommendations)
+    
+    return "\n".join(report_parts)
+
+
+# =============================================================================
+# DataValidator Class
+# =============================================================================
+
+class DataValidator:
+    """Comprehensive data validation and quality scoring.
+    
     Example:
-        >>> data = [{"instruction": "...", "output": "..."}, ...]
-        >>> validator = DataValidator(data)
-        >>> results = validator.validate_all()
-        >>> print(results.summary())
+        >>> validator = DataValidator(ValidationConfig())
+        >>> result = validator.validate_code_block(block)
+        >>> metrics = validator.score_dataset(examples)
+        >>> report = validator.generate_report(examples)
     """
     
-    def __init__(
-        self,
-        data: list[dict[str, Any]],
-        config: Optional[ValidatorConfig] = None,
-    ) -> None:
-        """Initialize DataValidator.
-        
-        Args:
-            data: List of training samples.
-            config: Optional validation configuration.
-        """
-        self.data = data
-        self.config = config or ValidatorConfig()
-        self._valid_indices: set[int] = set(range(len(data)))
-        self._duplicate_hashes: set[str] = set()
-        
-        logger.info(f"Initialized DataValidator with {len(data)} samples")
+    def __init__(self, config: Optional[ValidationConfig] = None) -> None:
+        """Initialize validator."""
+        self.config = config or ValidationConfig()
     
-    def _compute_hash(self, sample: dict[str, Any]) -> str:
-        """Compute hash for deduplication.
-        
-        Args:
-            sample: Training sample.
-            
-        Returns:
-            SHA256 hash of the sample content.
-        """
-        content = f"{sample.get('instruction', '')}{sample.get('output', '')}"
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
+    def validate_code_block(self, block: CodeBlock) -> ValidationResult:
+        """Validate a code block."""
+        is_valid, errors = validate_code_block(block, self.config)
+        result = ValidationResult(is_valid=is_valid, errors=errors)
+        result.checks_passed = 5 - len(errors)  # Approximate
+        result.checks_failed = len(errors)
+        return result
     
-    def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count (roughly 4 chars per token).
-        
-        Args:
-            text: Text to estimate tokens for.
-            
-        Returns:
-            Estimated token count.
-        """
-        return len(text) // 4
+    def validate_raft_example(self, example: RAFTExample | dict) -> ValidationResult:
+        """Validate a RAFT example."""
+        is_valid, errors = validate_raft_example(example, self.config)
+        result = ValidationResult(is_valid=is_valid, errors=errors)
+        result.checks_passed = 5 - len(errors)
+        result.checks_failed = len(errors)
+        return result
     
-    def check_required_fields(self) -> list[str]:
-        """Check for required fields.
-        
-        Returns:
-            List of error messages for missing fields.
-        """
-        errors: list[str] = []
-        
-        for idx, sample in enumerate(self.data):
-            for field in self.config.required_fields:
-                if field not in sample or sample[field] is None:
-                    errors.append(f"Sample {idx}: Missing required field '{field}'")
-                    self._valid_indices.discard(idx)
-        
-        return errors
+    def score_example(self, example: RAFTExample | dict) -> QualityScore:
+        """Score a single example."""
+        return score_example_quality(example)
     
-    def check_lengths(self) -> tuple[list[str], list[str]]:
-        """Check field lengths.
-        
-        Returns:
-            Tuple of (errors, warnings).
-        """
-        errors: list[str] = []
-        warnings: list[str] = []
-        
-        for idx, sample in enumerate(self.data):
-            if idx not in self._valid_indices:
-                continue
-            
-            instruction = sample.get("instruction", "")
-            output = sample.get("output", "")
-            input_text = sample.get("input", "")
-            
-            # Instruction length
-            if len(instruction) < self.config.min_instruction_length:
-                errors.append(f"Sample {idx}: Instruction too short ({len(instruction)} chars)")
-                self._valid_indices.discard(idx)
-            elif len(instruction) > self.config.max_instruction_length:
-                warnings.append(f"Sample {idx}: Instruction very long ({len(instruction)} chars)")
-            
-            # Output length
-            if len(output) < self.config.min_output_length:
-                errors.append(f"Sample {idx}: Output too short ({len(output)} chars)")
-                self._valid_indices.discard(idx)
-            elif len(output) > self.config.max_output_length:
-                warnings.append(f"Sample {idx}: Output very long ({len(output)} chars)")
-            
-            # Total tokens
-            total_tokens = self._estimate_tokens(instruction + input_text + output)
-            if total_tokens > self.config.max_token_length:
-                warnings.append(f"Sample {idx}: May exceed token limit ({total_tokens} tokens)")
-        
-        return errors, warnings
+    def score_dataset(self, examples: list) -> DataQualityMetrics:
+        """Score a complete dataset."""
+        return score_data_quality(examples, self.config)
     
-    def deduplicate(self) -> int:
-        """Remove duplicate samples.
-        
-        Returns:
-            Number of duplicates removed.
-        """
-        seen_hashes: set[str] = set()
-        duplicates_removed = 0
-        
-        for idx, sample in enumerate(self.data):
-            if idx not in self._valid_indices:
-                continue
-            
-            hash_val = self._compute_hash(sample)
-            if hash_val in seen_hashes:
-                self._valid_indices.discard(idx)
-                self._duplicate_hashes.add(hash_val)
-                duplicates_removed += 1
-            else:
-                seen_hashes.add(hash_val)
-        
-        logger.info(f"Removed {duplicates_removed} duplicates")
-        return duplicates_removed
+    def filter_dataset(self, examples: list) -> tuple[list, FilteringStats]:
+        """Filter dataset by quality."""
+        return filter_by_quality(examples, self.config)
     
-    def compute_quality_score(self, sample: dict[str, Any]) -> float:
-        """Compute quality score for a sample.
-        
-        Scoring factors:
-        - Output length (longer is generally better)
-        - Instruction clarity (question words, etc.)
-        - Code formatting (backticks, etc.)
-        - No repetition
-        
-        Args:
-            sample: Training sample to score.
-            
-        Returns:
-            Quality score between 0 and 1.
-        """
-        score = 0.0
-        
-        instruction = sample.get("instruction", "")
-        output = sample.get("output", "")
-        
-        # Length factor (0.0 - 0.3)
-        output_len = len(output)
-        if output_len >= 200:
-            score += 0.3
-        elif output_len >= 100:
-            score += 0.2
-        elif output_len >= 50:
-            score += 0.1
-        
-        # Instruction quality (0.0 - 0.3)
-        question_words = ["what", "how", "why", "explain", "describe", "when", "where"]
-        if any(word in instruction.lower() for word in question_words):
-            score += 0.15
-        if instruction.endswith("?"):
-            score += 0.1
-        if len(instruction.split()) >= 5:
-            score += 0.05
-        
-        # Output quality (0.0 - 0.4)
-        if "```" in output:  # Has code blocks
-            score += 0.1
-        if output.count(".") >= 2:  # Multiple sentences
-            score += 0.1
-        if not self._has_repetition(output):
-            score += 0.2
-        
-        return min(score, 1.0)
+    def generate_report(self, examples: list, worst_n: int = 5) -> str:
+        """Generate quality report."""
+        return generate_quality_report(examples, self.config, worst_n)
     
-    def _has_repetition(self, text: str, threshold: float = 0.3) -> bool:
-        """Check for excessive repetition.
+    def validate_all(self, examples: list) -> tuple[list[ValidationResult], DataQualityMetrics]:
+        """Validate all examples and compute metrics."""
+        results = []
+        for ex in examples:
+            result = self.validate_raft_example(ex)
+            results.append(result)
         
-        Args:
-            text: Text to check.
-            threshold: Repetition threshold.
-            
-        Returns:
-            True if excessive repetition detected.
-        """
-        words = text.lower().split()
-        if len(words) < 10:
-            return False
-        
-        word_counts = Counter(words)
-        most_common_count = word_counts.most_common(1)[0][1]
-        
-        return most_common_count / len(words) > threshold
-    
-    def filter_by_quality(self) -> int:
-        """Filter samples by quality score.
-        
-        Returns:
-            Number of samples filtered out.
-        """
-        filtered = 0
-        
-        for idx, sample in enumerate(self.data):
-            if idx not in self._valid_indices:
-                continue
-            
-            score = self.compute_quality_score(sample)
-            if score < self.config.min_quality_score:
-                self._valid_indices.discard(idx)
-                filtered += 1
-        
-        logger.info(f"Filtered {filtered} low-quality samples")
-        return filtered
-    
-    def validate_all(self) -> ValidationResult:
-        """Run all validation checks.
-        
-        Returns:
-            ValidationResult with all findings.
-        """
-        errors: list[str] = []
-        warnings: list[str] = []
-        
-        # Run checks
-        field_errors = self.check_required_fields()
-        errors.extend(field_errors)
-        
-        length_errors, length_warnings = self.check_lengths()
-        errors.extend(length_errors)
-        warnings.extend(length_warnings)
-        
-        duplicates = self.deduplicate()
-        if duplicates > 0:
-            warnings.append(f"Removed {duplicates} duplicate samples")
-        
-        filtered = self.filter_by_quality()
-        if filtered > 0:
-            warnings.append(f"Filtered {filtered} low-quality samples")
-        
-        # Check minimum samples
-        valid_count = len(self._valid_indices)
-        if valid_count < self.config.min_samples:
-            errors.append(
-                f"Insufficient samples: {valid_count} < {self.config.min_samples} required"
-            )
-        
-        # Compute stats
-        stats = {
-            "duplicates_removed": duplicates,
-            "quality_filtered": filtered,
-            "average_output_length": self._compute_average_output_length(),
-        }
-        
-        return ValidationResult(
-            is_valid=len(errors) == 0 and valid_count >= self.config.min_samples,
-            total_samples=len(self.data),
-            valid_samples=valid_count,
-            errors=errors,
-            warnings=warnings,
-            stats=stats,
-        )
-    
-    def _compute_average_output_length(self) -> float:
-        """Compute average output length for valid samples."""
-        lengths = [
-            len(self.data[idx].get("output", ""))
-            for idx in self._valid_indices
-        ]
-        return sum(lengths) / len(lengths) if lengths else 0.0
-    
-    def get_cleaned_data(self) -> list[dict[str, Any]]:
-        """Get validated and cleaned data.
-        
-        Returns:
-            List of valid samples only.
-        """
-        return [self.data[idx] for idx in sorted(self._valid_indices)]
-    
-    def save_cleaned_data(self, output_path: str) -> None:
-        """Save cleaned data to file.
-        
-        Args:
-            output_path: Path to save JSON file.
-        """
-        import json
-        
-        cleaned = self.get_cleaned_data()
-        with open(output_path, "w") as f:
-            json.dump(cleaned, f, indent=2)
-        
-        logger.info(f"Saved {len(cleaned)} samples to {output_path}")
+        metrics = self.score_dataset(examples)
+        return results, metrics
