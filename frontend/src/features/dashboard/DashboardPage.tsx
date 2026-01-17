@@ -70,7 +70,7 @@ export function DashboardPage() {
           ) : (
             <>
               <div className="status-indicator">
-                <span className={`status - dot ${systemStatus?.healthy ? 'healthy' : 'error'} `} />
+                <span className={`status-dot ${systemStatus?.healthy ? 'healthy' : 'error'}`} />
                 <span className="status-text">
                   {systemStatus?.healthy ? 'System Healthy' : 'System Error'}
                 </span>
@@ -87,7 +87,7 @@ export function DashboardPage() {
                 <span className="status-item">
                   <Database size={14} />
                   Memory: {systemStatus?.memory
-                    ? `${(systemStatus.memory.used / 1024 / 1024 / 1024).toFixed(1)} GB / ${(systemStatus.memory.total / 1024 / 1024 / 1024).toFixed(0)} GB`
+                    ? `${(systemStatus.memory.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(systemStatus.memory.total / 1024 / 1024 / 1024).toFixed(0)}GB`
                     : 'N/A'}
                 </span>
               </div>
@@ -139,7 +139,7 @@ export function DashboardPage() {
             ) : (
               <div className="jobs-list">
                 {activeJobs.map((job: TrainingJob) => (
-                  <Link to={`/ jobs / ${job.id} `} key={job.id} className="job-item">
+                  <Link to={`/jobs/${job.id}`} key={job.id} className="job-item">
                     <div className="job-info">
                       <span className="job-name">{job.projectName}</span>
                       <span className="job-epoch">
@@ -149,7 +149,7 @@ export function DashboardPage() {
                     <div className="job-progress">
                       <Progress value={job.progress || 0} size="sm" />
                       <span className="job-eta">
-                        {job.eta ? `ETA: ${job.eta} ` : 'Starting...'}
+                        {job.eta ? `ETA: ${job.eta}` : 'Starting...'}
                       </span>
                     </div>
                     {job.loss !== undefined && (
@@ -238,315 +238,316 @@ export function DashboardPage() {
         )}
 
         <style>{`
-  .dashboard - page {
-  padding: var(--space - 6);
-  max - width: 1400px;
-}
+          .dashboard-page {
+            padding: var(--space-6);
+            max-width: 1400px;
+          }
 
-        .status - bar {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 6);
-  padding: var(--space - 4);
-  background: var(--bg - surface);
-  border: 1px solid var(--border - subtle);
-  border - radius: var(--radius - lg);
-  margin - bottom: var(--space - 6);
-}
+          .status-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--space-6);
+            padding: var(--space-4);
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-6);
+          }
 
-        .status - indicator {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 2);
-}
+          .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+          }
 
-        .status - dot {
-  width: 10px;
-  height: 10px;
-  border - radius: 50 %;
-}
+          .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+          }
 
-        .status - dot.healthy { background: var(--status - success); }
-        .status - dot.degraded { background: var(--status - warning); }
-        .status - dot.error { background: var(--status - danger); }
+          .status-dot.healthy { background: var(--status-success); }
+          .status-dot.degraded { background: var(--status-warning); }
+          .status-dot.error { background: var(--status-danger); }
 
-        .status - text {
-  font - weight: var(--font - semibold);
-  color: var(--text - primary);
-}
+          .status-text {
+            font-weight: var(--font-semibold);
+            color: var(--text-primary);
+          }
 
-        .status - details {
-  display: flex;
-  gap: var(--space - 4);
-  flex: 1;
-}
+          .status-details {
+            display: flex;
+            gap: var(--space-4);
+            flex: 1;
+          }
 
-        .status - item {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 1);
-  font - size: var(--text - sm);
-  color: var(--text - secondary);
-}
+          .status-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1);
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+          }
 
-        .active - model - pill {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 2);
-  padding: var(--space - 2) var(--space - 3);
-  background: var(--accent - primary - bg);
-  border: 1px solid var(--accent - primary);
-  border - radius: var(--radius - full);
-  font - size: var(--text - sm);
-  font - weight: var(--font - medium);
-  color: var(--accent - primary);
-}
+          .active-model-pill {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            background: var(--accent-primary-bg);
+            border: 1px solid var(--accent-primary);
+            border-radius: var(--radius-full);
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            color: var(--accent-primary);
+          }
 
-        .dashboard - grid {
-  display: grid;
-  grid - template - columns: 1fr 1fr;
-  gap: var(--space - 6);
-}
+          .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-6);
+          }
 
-        .card - header {
-  display: flex;
-  justify - content: space - between;
-  align - items: center;
-  margin - bottom: var(--space - 4);
-}
+          .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-4);
+          }
 
-        .card - header h2 {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 2);
-  font - size: var(--text - base);
-  font - weight: var(--font - semibold);
-  color: var(--text - primary);
-  margin: 0;
-}
+          .card-header h2 {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-base);
+            font-weight: var(--font-semibold);
+            color: var(--text-primary);
+            margin: 0;
+          }
 
-        .card - header a {
-  font - size: var(--text - sm);
-  color: var(--accent - primary);
-}
+          .card-header a {
+            font-size: var(--text-sm);
+            color: var(--accent-primary);
+          }
 
-        .active - jobs - card {
-  grid - row: span 2;
-}
+          .active-jobs-card {
+            grid-row: span 2;
+          }
 
-        .empty - jobs {
-  text - align: center;
-  padding: var(--space - 8);
-  color: var(--text - secondary);
-}
+          .empty-jobs {
+            text-align: center;
+            padding: var(--space-8);
+            color: var(--text-secondary);
+          }
 
-        .empty - jobs p {
-  margin - bottom: var(--space - 4);
-}
+          .empty-jobs p {
+            margin-bottom: var(--space-4);
+          }
 
-        .jobs - list {
-  display: flex;
-  flex - direction: column;
-  gap: var(--space - 3);
-}
+          .jobs-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+          }
 
-        .job - item {
-  display: block;
-  padding: var(--space - 4);
-  background: var(--bg - elevated);
-  border - radius: var(--radius - md);
-  border: 1px solid var(--border - subtle);
-  text - decoration: none;
-  color: inherit;
-  transition: border - color var(--transition - fast);
-}
+          .job-item {
+            display: block;
+            padding: var(--space-4);
+            background: var(--bg-elevated);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-subtle);
+            text-decoration: none;
+            color: inherit;
+            transition: border-color var(--transition-fast);
+          }
 
-        .job - item:hover {
-  border - color: var(--accent - primary);
-}
+          .job-item:hover {
+            border-color: var(--accent-primary);
+          }
 
-        .job - info {
-  display: flex;
-  justify - content: space - between;
-  margin - bottom: var(--space - 2);
-}
+          .job-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--space-2);
+          }
 
-        .job - name {
-  font - weight: var(--font - semibold);
-  color: var(--text - primary);
-}
+          .job-name {
+            font-weight: var(--font-semibold);
+            color: var(--text-primary);
+          }
 
-        .job - epoch {
-  font - size: var(--text - sm);
-  color: var(--text - secondary);
-}
+          .job-epoch {
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+          }
 
-        .job - progress {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 3);
-}
+          .job-progress {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+          }
 
-        .job - eta {
-  font - size: var(--text - xs);
-  color: var(--text - tertiary);
-  white - space: nowrap;
-}
+          .job-eta {
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+            white-space: nowrap;
+          }
 
-        .job - loss {
-  display: block;
-  margin - top: var(--space - 2);
-  font - size: var(--text - sm);
-  color: var(--text - secondary);
-}
+          .job-loss {
+            display: block;
+            margin-top: var(--space-2);
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+          }
 
-        .quick - actions h2 {
-  font - size: var(--text - base);
-  font - weight: var(--font - semibold);
-  margin - bottom: var(--space - 4);
-  color: var(--text - primary);
-}
+          .quick-actions h2 {
+            font-size: var(--text-base);
+            font-weight: var(--font-semibold);
+            margin-bottom: var(--space-4);
+            color: var(--text-primary);
+          }
 
-        .actions - grid {
-  display: grid;
-  grid - template - columns: repeat(2, 1fr);
-  gap: var(--space - 3);
-}
+          .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-3);
+          }
 
-        .action - card {
-  display: flex;
-  flex - direction: column;
-  align - items: center;
-  justify - content: center;
-  gap: var(--space - 2);
-  padding: var(--space - 6);
-  background: var(--bg - surface);
-  border: 1px solid var(--border - subtle);
-  border - radius: var(--radius - lg);
-  text - decoration: none;
-  color: var(--text - secondary);
-  transition: all var(--transition - fast);
-}
+          .action-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2);
+            padding: var(--space-6);
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            text-decoration: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+          }
 
-        .action - card:hover {
-  background: var(--bg - hover);
-  color: var(--text - primary);
-  border - color: var(--accent - primary);
-  transform: translateY(-2px);
-}
+          .action-card:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+          }
 
-        .action - card.primary {
-  background: var(--accent - primary);
-  border - color: var(--accent - primary);
-  color: white;
-}
+          .action-card.primary {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: white;
+          }
 
-        .action - card.primary:hover {
-  background: var(--accent - primary - hover);
-}
+          .action-card.primary:hover {
+            background: var(--accent-primary-hover);
+          }
 
-        .activity - list {
-  display: flex;
-  flex - direction: column;
-  gap: var(--space - 3);
-}
+          .activity-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+          }
 
-        .activity - item {
-  display: flex;
-  align - items: center;
-  gap: var(--space - 3);
-  padding: var(--space - 3);
-  border - radius: var(--radius - md);
-}
+          .activity-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3);
+            border-radius: var(--radius-md);
+          }
 
-        .activity - item:hover {
-  background: var(--bg - elevated);
-}
+          .activity-item:hover {
+            background: var(--bg-elevated);
+          }
 
-        .activity - icon {
-  color: var(--text - tertiary);
-}
+          .activity-icon {
+            color: var(--text-tertiary);
+          }
 
-        .activity - icon.success { color: var(--status - success); }
-        .activity - icon.error { color: var(--status - danger); }
-        .activity - icon.info { color: var(--status - info); }
+          .activity-icon .success { color: var(--status-success); }
+          .activity-icon .error { color: var(--status-danger); }
+          .activity-icon .info { color: var(--status-info); }
 
-        .activity - message {
-  flex: 1;
-  font - size: var(--text - sm);
-  color: var(--text - secondary);
-}
+          .activity-message {
+            flex: 1;
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+          }
 
-        .activity - time {
-  font - size: var(--text - xs);
-  color: var(--text - tertiary);
-}
+          .activity-time {
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+          }
 
-        .welcome - card {
-  margin - top: var(--space - 6);
-  padding: var(--space - 8);
-  background: var(--bg - surface);
-  border: 1px dashed var(--border - subtle);
-}
+          .welcome-card {
+            margin-top: var(--space-6);
+            padding: var(--space-8);
+            background: var(--bg-surface);
+            border: 1px dashed var(--border-subtle);
+          }
 
-        .welcome - content {
-  text - align: center;
-}
+          .welcome-content {
+            text-align: center;
+          }
 
-        .welcome - content h2 {
-  font - size: var(--text - xl);
-  margin - bottom: var(--space - 2);
-  color: var(--text - primary);
-}
+          .welcome-content h2 {
+            font-size: var(--text-xl);
+            margin-bottom: var(--space-2);
+            color: var(--text-primary);
+          }
 
-        .welcome - content > p {
-  color: var(--text - secondary);
-}
+          .welcome-content > p {
+            color: var(--text-secondary);
+          }
 
-        .welcome - steps {
-  display: flex;
-  justify - content: center;
-  gap: var(--space - 8);
-  margin: var(--space - 6) 0;
-}
+          .welcome-steps {
+            display: flex;
+            justify-content: center;
+            gap: var(--space-8);
+            margin: var(--space-6) 0;
+          }
 
-        .welcome - step {
-  display: flex;
-  flex - direction: column;
-  align - items: center;
-  gap: var(--space - 2);
-  color: var(--text - secondary);
-}
+          .welcome-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--space-2);
+            color: var(--text-secondary);
+          }
 
-        .step - number {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align - items: center;
-  justify - content: center;
-  background: var(--accent - primary);
-  color: white;
-  border - radius: 50 %;
-  font - weight: var(--font - semibold);
-}
+          .step-number {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-primary);
+            color: white;
+            border-radius: 50%;
+            font-weight: var(--font-semibold);
+          }
 
-@media(max - width: 900px) {
-          .dashboard - grid {
-    grid - template - columns: 1fr;
-  }
-          
-          .status - bar {
-    flex - wrap: wrap;
-  }
-          
-          .status - details {
-    order: 3;
-    width: 100 %;
-    justify - content: center;
-    margin - top: var(--space - 3);
-  }
-}
-`}</style>
+          @media (max-width: 900px) {
+            .dashboard-grid {
+              grid-template-columns: 1fr;
+            }
+            
+            .status-bar {
+              flex-wrap: wrap;
+            }
+            
+            .status-details {
+              order: 3;
+              width: 100%;
+              justify-content: center;
+              margin-top: var(--space-3);
+            }
+          }
+        `}</style>
       </div>
 
       <NewFineTuneDialog

@@ -54,7 +54,7 @@ describe('Input', () => {
     // =========================================================================
 
     it('renders left icon when provided', () => {
-        render(<Input leftIcon={<Search data-testid="left-icon" />} />);
+        render(<Input icon={<Search data-testid="left-icon" />} />);
         expect(screen.getByTestId('left-icon')).toBeInTheDocument();
     });
 
@@ -64,7 +64,7 @@ describe('Input', () => {
     });
 
     it('applies left icon padding class', () => {
-        render(<Input leftIcon={<Search />} />);
+        render(<Input icon={<Search />} />);
         const input = screen.getByRole('textbox');
         expect(input).toHaveClass('input-with-left-icon');
     });

@@ -144,7 +144,7 @@ export function DatasetCard({
                 {isReady && onUseForTraining && (
                     <Button
                         size="sm"
-                        leftIcon={<Zap size={14} />}
+                        icon={<Zap size={14} />}
                         onClick={() => onUseForTraining(dataset.id)}
                         style={{ flex: 1 }}
                     >
@@ -155,7 +155,7 @@ export function DatasetCard({
                     <Button
                         variant="secondary"
                         size="sm"
-                        leftIcon={<Download size={14} />}
+                        icon={<Download size={14} />}
                         onClick={() => onDownload(dataset.id)}
                     >
                         JSON

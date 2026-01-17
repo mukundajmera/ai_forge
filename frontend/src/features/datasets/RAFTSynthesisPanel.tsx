@@ -64,7 +64,7 @@ export function RAFTSynthesisPanel({
                     {onRegenerate && (
                         <Button
                             variant="secondary"
-                            leftIcon={<RefreshCw size={16} />}
+                            icon={<RefreshCw size={16} />}
                             onClick={onRegenerate}
                             disabled={isGenerating}
                         >
@@ -73,7 +73,7 @@ export function RAFTSynthesisPanel({
                     )}
                     {onApprove && isComplete && (
                         <Button
-                            leftIcon={<Check size={16} />}
+                            icon={<Check size={16} />}
                             onClick={onApprove}
                         >
                             Approve & Save

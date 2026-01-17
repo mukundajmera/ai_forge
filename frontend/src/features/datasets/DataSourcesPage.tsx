@@ -56,13 +56,13 @@ export function DataSourcesPage() {
                 <div className="header-actions">
                     <Button
                         variant="secondary"
-                        leftIcon={<Sparkles size={16} />}
+                        icon={<Sparkles size={16} />}
                         onClick={() => window.location.href = '/datasets'}
                     >
                         View Datasets
                     </Button>
                     <Button
-                        leftIcon={<Plus size={16} />}
+                        icon={<Plus size={16} />}
                         onClick={() => setIsAddDialogOpen(true)}
                     >
                         Add Data Source
@@ -89,7 +89,7 @@ export function DataSourcesPage() {
                         title="No data sources yet"
                         description="Add your first data source to start generating training data for fine-tuning."
                         action={
-                            <Button leftIcon={<Plus size={16} />} onClick={() => setIsAddDialogOpen(true)}>
+                            <Button icon={<Plus size={16} />} onClick={() => setIsAddDialogOpen(true)}>
                                 Add Data Source
                             </Button>
                         }

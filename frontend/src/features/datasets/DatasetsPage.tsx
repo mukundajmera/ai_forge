@@ -37,7 +37,7 @@ export function DatasetsPage() {
                 <div className="header-actions">
                     <Button
                         variant="secondary"
-                        leftIcon={<Sparkles size={16} />}
+                        icon={<Sparkles size={16} />}
                         onClick={() => window.location.href = '/data-sources'}
                     >
                         Manage Sources
@@ -109,7 +109,7 @@ export function DatasetsPage() {
                         description="Add data sources and generate training datasets to get started."
                         action={
                             <Button
-                                leftIcon={<Plus size={16} />}
+                                icon={<Plus size={16} />}
                                 onClick={() => window.location.href = '/data-sources'}
                             >
                                 Add Data Source

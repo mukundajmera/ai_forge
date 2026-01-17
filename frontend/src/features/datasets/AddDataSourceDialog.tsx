@@ -168,7 +168,7 @@ export function AddDataSourceDialog({ isOpen, onClose, onSuccess }: AddDataSourc
                     <Button
                         onClick={handleSubmit}
                         disabled={isSubmitDisabled()}
-                        isLoading={addDataSourceMutation.isPending || isUploading}
+                        loading={addDataSourceMutation.isPending || isUploading}
                     >
                         {getSubmitLabel()}
                     </Button>
@@ -185,7 +185,7 @@ export function AddDataSourceDialog({ isOpen, onClose, onSuccess }: AddDataSourc
                         placeholder="https://github.com/user/repo or /path/to/local/repo"
                         value={gitUrl}
                         onChange={(e) => setGitUrl(e.target.value)}
-                        leftIcon={<GitBranch size={16} />}
+                        icon={<GitBranch size={16} />}
                     />
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
@@ -232,7 +232,7 @@ export function AddDataSourceDialog({ isOpen, onClose, onSuccess }: AddDataSourc
                         placeholder="/path/to/your/project"
                         value={localPath}
                         onChange={(e) => setLocalPath(e.target.value)}
-                        leftIcon={<FolderOpen size={16} />}
+                        icon={<FolderOpen size={16} />}
                         hint="Enter the absolute path to your project folder"
                     />
 

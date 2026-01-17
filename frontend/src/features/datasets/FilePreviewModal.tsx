@@ -41,7 +41,7 @@ export function FilePreviewModal({
                     {onExclude && (
                         <Button
                             variant="ghost"
-                            leftIcon={<Ban size={16} />}
+                            icon={<Ban size={16} />}
                             onClick={() => {
                                 onExclude(file.id)
                                 onClose()

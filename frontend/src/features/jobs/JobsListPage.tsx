@@ -137,7 +137,7 @@ export function JobsListPage() {
                     <p>All fine-tuning runs past and present</p>
                 </div>
                 <Link to="/jobs/new">
-                    <Button leftIcon={<Plus size={16} />}>
+                    <Button icon={<Plus size={16} />}>
                         New Fine-Tune
                     </Button>
                 </Link>
@@ -164,7 +164,7 @@ export function JobsListPage() {
                         placeholder="Search projects..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        leftIcon={<Search size={16} />}
+                        icon={<Search size={16} />}
                     />
                 </div>
             </div>
@@ -179,7 +179,7 @@ export function JobsListPage() {
                     description={searchQuery ? 'Try a different search term' : 'Start fine-tuning your first model with your custom code dataset.'}
                     action={!searchQuery && (
                         <Link to="/jobs/new">
-                            <Button leftIcon={<Plus size={16} />}>New Fine-Tune</Button>
+                            <Button icon={<Plus size={16} />}>New Fine-Tune</Button>
                         </Link>
                     )}
                 />
