@@ -1,0 +1,34 @@
+# Antigravity Agent – Scope Handbook
+
+This guide applies to all files under `antigravity_agent/`.
+
+## Mission
+- Provide autonomous “Repo Guardian” orchestration for repository monitoring, planning, training, evaluation, export, and deployment.
+- Maintain compatibility with external agent runtimes consuming `skills.yaml` and generated artifacts.
+
+## Key Files
+| File/Dir | Purpose | Rules |
+|----------|---------|-------|
+| `repo_guardian.py` | Mission control logic, health reporting, pipeline execution | Preserve async interfaces and dataclasses. Log outputs must remain structured. Update tests/interfaces if method signatures change. |
+| `skills.yaml` | Declares skill contracts for external orchestrators | Treat as API surface: changing names, inputs, or outputs requires documentation updates (`docs/repo_guardian.md`) and version communication. |
+| `prompts.py` | Agent prompts and mission control instructions | Keep prompts deterministic; document new prompts. |
+| `artifacts_templates/` | Jinja templates (e.g., `health_report.md.j2`) | Synchronize template variables with dataclass fields. Update docs when altering report structure. |
+
+## Standards
+- Follow repository-wide typing, linting, and docstring rules.
+- Maintain concurrency correctness when editing async flows.
+- Avoid hardcoding secrets or paths; rely on environment variables.
+- Include validation coverage for new health metrics or automation flows (unit/integration tests).
+
+## Testing
+- Unit tests for Repo Guardian live under `tests/integration/test_repo_guardian.py` and relevant unit suites. Add tests when adding metrics, health rules, or pipeline steps.
+- For template changes, add snapshot/regression tests verifying output formatting.
+
+## Documentation
+- Update `docs/repo_guardian.md` and `docs/deployment.md` when automation behavior, pipelines, or skill definitions change.
+- Mention new metrics or reports in `docs/monitoring.md` if surfaced externally.
+
+## Special Considerations
+- External integrations may rely on returned data structures; maintain backward compatibility or bump version and document migration steps.
+- Large artifact generation should respect repository cleanup practices (write under `output/` or `logs/`).
+- When adding new skills, include rationale and ensure they map to actual executable workflows.
