@@ -53,10 +53,10 @@ export function Modal({
                 <div className="modal-header">
                     <h2 className="modal-title">{title}</h2>
                     <Button
-                        variant="ghost"
+                        intent="ghost"
                         size="sm"
                         onClick={onClose}
-                        style={{ padding: 'var(--space-2)' }}
+                        aria-label="Close modal"
                     >
                         <X size={18} />
                     </Button>

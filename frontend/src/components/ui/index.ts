@@ -8,6 +8,7 @@ export { Input } from './Input'
 export { MetricCard } from './MetricCard'
 export { Modal } from './Modal'
 export { Progress } from './Progress'
+export { QueryError, QueryEmpty } from './QueryError'
 export { Select } from './Select'
 export { Skeleton, SkeletonText, SkeletonCard } from './Skeleton'
 export { Table } from './Table'
@@ -15,5 +16,6 @@ export { Tabs } from './Tabs'
 export { Textarea } from './Textarea'
 export { toast, ToastProvider, useToast, useToastHelpers } from './Toast'
 export { Tooltip } from './Tooltip'
+
 
 

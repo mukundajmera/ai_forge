@@ -247,13 +247,32 @@ export interface TrainingJob {
     status: TrainingJobStatus;
     baseModel: string;
     datasetId: string;
-    config: TrainingConfig;
-    metrics: TrainingMetrics;
+    datasetName?: string;
+    // Config (flattened for API compatibility)
+    epochs: number;
+    learningRate: number;
+    rank: number;
+    batchSize: number;
+    method?: TrainingMethod;
+    // Progress metrics (flattened)
+    progress: number; // 0-100
+    currentEpoch?: number;
+    currentStep?: number;
+    totalSteps?: number;
+    loss?: number;
+    accuracy?: number;
+    perplexity?: number;
+    eta?: string;
+    // Timestamps
     createdAt: string;
     startedAt?: string;
     completedAt?: string;
     duration?: number; // seconds
-    error?: TrainingError;
+    // Output
+    outputDir?: string;
+    checkpoints?: string[];
+    // Error handling
+    error?: TrainingError | string;
 }
 
 // =============================================================================
@@ -265,8 +284,10 @@ export type ModelFormat = 'gguf' | 'ggml';
 export type QuantizationType = 'q4_k_m' | 'q5_k_m' | 'q8_0' | 'f16';
 
 export interface ModelMetrics {
-    codebleu: number;
-    humaneval: number;
+    codeBleu: number;
+    codebleu?: number; // alias for API compatibility
+    humanEval: number;
+    humaneval?: number; // alias for API compatibility  
     perplexity: number;
     avgLatency: number; // ms
 }
