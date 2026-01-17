@@ -1,171 +1,200 @@
-# 🔥 AI Forge
+# 🔥 AI Forge UI
 
-**Local LLM Fine-Tuning Service for Mac Apple Silicon**
+> A world-class web interface for local LLM fine-tuning with PiSSA, QLoRA, and Ollama deployment.
 
-[![CI](https://github.com/ai-forge/ai-forge/actions/workflows/tests.yml/badge.svg)](https://github.com/ai-forge/ai-forge/actions/workflows/tests.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/yourorg/ai-forge-ui/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/yourorg/ai-forge-ui/actions/workflows/frontend-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 
-AI Forge is a production-grade service for fine-tuning LLMs on your local Mac. It combines cutting-edge techniques (PiSSA, QLoRA, RAFT) to deliver fast, memory-efficient training with minimal setup.
+## ✨ Features
 
-## ✨ Key Features
+- **📊 Real-Time Training Monitoring** - Live loss curves, metrics, and log streaming
+- **🤖 AI Agent Integration** - Repo Guardian suggests optimal retraining times
+- **📁 Smart Data Ingestion** - Upload code/docs, auto-parse with AST, generate training data
+- **⚡ PiSSA + QLoRA** - 3-5x faster convergence than standard LoRA
+- **🚀 One-Click Deployment** - Export to GGUF, deploy to Ollama instantly
+- **🎯 Confidence-Driven UX** - Deploy decisions backed by CodeBLEU, HumanEval metrics
 
-| Feature | Description |
-|---------|-------------|
-| **PiSSA + QLoRA** | 10x faster than vanilla LoRA with better convergence |
-| **Mac Optimized** | Native Apple Silicon support with MLX acceleration |
-| **RAFT Data Synthesis** | Automatic training data generation from your codebase |
-| **One-Click Ollama** | Deploy fine-tuned models to Ollama instantly |
-| **OpenAI Compatible** | Drop-in replacement for OpenAI API |
-| **Autonomous Agent** | Repo Guardian monitors and retrains automatically |
-
-## 🏗️ Architecture
-
-```mermaid
-graph LR
-    A[Repository] --> B[Code Miner]
-    B --> C[RAFT Generator]
-    C --> D[Data Validator]
-    D --> E[Training Forge]
-    E --> F[Model Evaluator]
-    F --> G[GGUF Exporter]
-    G --> H[Ollama]
-    H --> I[API Service]
-```
-
-## 🚀 Quick Start (5 Minutes)
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- macOS 13+ (Ventura or later)
-- Apple Silicon (M1/M2/M3)
-- Python 3.11+
-- 16GB+ RAM recommended (8GB minimum)
+- Node.js 18+
+- npm or pnpm
+- AI Forge Backend running (see [backend setup](docs/DEPLOYMENT.md))
 
 ### Installation
 
 ```bash
-# Clone repository
-git clone https://github.com/ai-forge/ai-forge.git
-cd ai-forge
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate
+# Clone repo
+git clone https://github.com/yourorg/ai-forge-ui.git
+cd ai-forge-ui/frontend
 
 # Install dependencies
-pip install -e ".[dev]"
+npm install
 
-# Install Ollama
-brew install ollama
+# Set environment variables
+cp .env.example .env
+# Edit .env with your API base URL
+
+# Start dev server
+npm run dev
 ```
 
-### Run Quick Fine-Tune
-
-```bash
-# 1. Start the service
-python -m conductor.service
-
-# 2. In another terminal, trigger fine-tuning
-curl -X POST http://localhost:8000/v1/retrain \
-  -H "Content-Type: application/json" \
-  -d '{"project_path": ".", "force": true}'
-
-# 3. Query your fine-tuned model
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Explain this codebase"}]}'
-```
-
-## 📊 Performance
-
-| Hardware | Model Size | Training Time | Memory Usage |
-|----------|------------|---------------|--------------|
-| M3 Max (64GB) | 7B | ~15 min | ~12GB |
-| M2 Pro (32GB) | 3B | ~8 min | ~6GB |
-| M1 (16GB) | 3B | ~12 min | ~8GB |
+Open [http://localhost:5173](http://localhost:5173)
 
 ## 📖 Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/architecture.md) | System design and components |
-| [User Guide](docs/user_guide.md) | Step-by-step tutorials |
-| [API Reference](docs/api_reference.md) | Complete API documentation |
-| [Developer Guide](docs/developer_guide.md) | Extending the system |
-| [Configuration](docs/configuration.md) | All config options |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
+| [User Guide](frontend/docs/USER_GUIDE.md) | How to use AI Forge |
+| [Architecture](frontend/docs/ARCHITECTURE.md) | System design and data flow |
+| [API Reference](frontend/docs/API.md) | Backend API documentation |
+| [Contributing](CONTRIBUTING.md) | Development setup and guidelines |
+| [Deployment](docs/DEPLOYMENT.md) | Production deployment guide |
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│   React UI      │─────▶│  FastAPI Backend │─────▶│  MLX / Unsloth  │
+│  (This Repo)    │      │                  │      │   (Training)    │
+└─────────────────┘      └──────────────────┘      └─────────────────┘
+        │                         │                          │
+        │                         ▼                          ▼
+        │                  ┌─────────────┐          ┌──────────────┐
+        │                  │  Antigravity│          │    Ollama    │
+        └─────────────────▶│   Agent     │          │  (Serving)   │
+                           └─────────────┘          └──────────────┘
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, TypeScript, Vite |
+| Styling | Tailwind CSS, CSS Variables |
+| State | React Query (TanStack Query) |
+| Charts | Recharts |
+| Testing | Vitest, Playwright, MSW |
+| Backend | FastAPI, Python 3.11 |
+| Training | MLX, Unsloth, PiSSA, QLoRA |
+| Serving | Ollama |
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests
-pytest
+# Unit tests
+npm test
 
-# Run unit tests only
-pytest -m unit
+# Unit tests with coverage
+npm run test:coverage
 
-# Run with coverage
-pytest --cov=ai_forge --cov-report=html
+# Integration tests
+npm run test:integration
+
+# E2E tests
+npm run test:e2e
+
+# E2E with UI
+npm run test:e2e:ui
 ```
 
-## 🏛️ Project Structure
+### Test Coverage Goals
+
+- **Unit Tests**: 80%+ coverage
+- **Integration Tests**: All page components
+- **E2E Tests**: Critical user flows
+
+## 📦 Production Build
+
+```bash
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Type check
+npm run type-check
+
+# Lint
+npm run lint
+```
+
+## 🎨 Design System
+
+AI Forge uses a custom design system with:
+
+- **Dark-first palette** with semantic color tokens
+- **Accessible components** (WCAG 2.1 AA compliant)
+- **Consistent spacing** using an 8px grid
+- **Typography scale** using Inter font family
+
+See [Design System](frontend/docs/DESIGN_SYSTEM.md) for full documentation.
+
+## 📁 Project Structure
 
 ```
 ai_forge/
-├── data_pipeline/       # Code mining and RAFT generation
-│   ├── miner.py         # AST-based code extraction
-│   ├── raft_generator.py # Training data synthesis
-│   └── validator.py     # Data quality validation
-├── training/            # PiSSA + QLoRA training
-│   ├── forge.py         # Main training engine
-│   └── callbacks/       # Training callbacks
-├── judge/               # Model evaluation
-│   ├── evaluator.py     # Metrics computation
-│   └── exporter.py      # GGUF export
-├── conductor/           # API service
-│   ├── service.py       # FastAPI endpoints
-│   └── ollama_manager.py # Ollama integration
-└── antigravity_agent/   # Autonomous orchestration
-    ├── repo_guardian.py # Pipeline automation
-    └── skills.yaml      # Agent capabilities
+├── frontend/                 # React UI (this README)
+│   ├── src/
+│   │   ├── app/             # App shell, routing
+│   │   ├── components/      # Shared UI components
+│   │   ├── features/        # Feature modules
+│   │   ├── lib/             # Utilities, hooks, API
+│   │   └── mocks/           # MSW handlers
+│   ├── e2e/                 # Playwright tests
+│   └── docs/                # Documentation
+├── ai_forge/                # Python backend
+├── training/                # Training engine
+├── judge/                   # Model evaluation
+├── conductor/               # Orchestration
+└── antigravity_agent/       # Repo Guardian agent
 ```
 
-## 🔬 Research Background
+## 🔧 Configuration
 
-AI Forge implements techniques from recent research:
+### Environment Variables
 
-- **[PiSSA](https://arxiv.org/abs/2404.02948)** - Principal Singular values and Singular vectors Adaptation
-- **[QLoRA](https://arxiv.org/abs/2305.14314)** - Quantized Low-Rank Adaptation
-- **[RAFT](https://arxiv.org/abs/2403.10131)** - Retrieval Augmented Fine-Tuning
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_API_BASE_URL` | Backend API URL | `http://localhost:8000` |
+| `VITE_ENABLE_MOCKS` | Enable MSW mocking | `false` |
+| `VITE_LOG_LEVEL` | Logging level | `info` |
 
-See [Research Summary](docs/research_summary.md) for details.
+### Feature Flags
+
+Feature flags can be configured in `.env`:
+
+```bash
+VITE_FEATURE_MISSIONS=true
+VITE_FEATURE_MULTIMODEL=false
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md).
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for:
 
-```bash
-# Install development dependencies
-pip install -e ".[dev]"
+- Development setup
+- Code standards
+- Pull request guidelines
+- Testing requirements
 
-# Install pre-commit hooks
-pre-commit install
+### Quick Contribution Steps
 
-# Run tests before submitting
-pytest
-```
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'feat: add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- [Unsloth](https://github.com/unslothai/unsloth) for MLX optimizations
-- [Ollama](https://ollama.ai) for local model serving
-- [HuggingFace](https://huggingface.co) for transformers ecosystem
+MIT © [Your Organization]
 
 ---
 
-**Made with ❤️ for the Mac developer community**
+<p align="center">
+  Made with ❤️ for the AI/ML community
+</p>
