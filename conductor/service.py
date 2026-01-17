@@ -247,6 +247,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    # Include data sources router
+    from conductor.data_sources import router as data_sources_router
+    application.include_router(data_sources_router, prefix="/api")
+    
     return application
 
 
