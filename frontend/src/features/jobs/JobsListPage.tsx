@@ -25,12 +25,12 @@ import type { TrainingJob } from './hooks/useJobs'
 const mockJobs: TrainingJob[] = [
     {
         id: 'job-1',
-        project: 'my-project',
+        projectName: 'my-project',
         baseModel: 'Llama-3.2-3B',
-        status: 'training',
+        status: 'running',
         progress: 78,
         currentEpoch: 2,
-        totalEpochs: 3,
+        epochs: 3,
         currentStep: 156,
         totalSteps: 234,
         loss: 1.23,
@@ -45,12 +45,12 @@ const mockJobs: TrainingJob[] = [
     },
     {
         id: 'job-2',
-        project: 'api-helper',
+        projectName: 'api-helper',
         baseModel: 'Llama-3.2-3B',
         status: 'completed',
         progress: 100,
         currentEpoch: 3,
-        totalEpochs: 3,
+        epochs: 3,
         loss: 0.89,
         learningRate: 2e-4,
         rank: 64,
@@ -64,12 +64,12 @@ const mockJobs: TrainingJob[] = [
     },
     {
         id: 'job-3',
-        project: 'test-run',
+        projectName: 'test-run',
         baseModel: 'Llama-3.2-7B',
         status: 'failed',
         progress: 18,
         currentEpoch: 1,
-        totalEpochs: 3,
+        epochs: 3,
         currentStep: 42,
         totalSteps: 150,
         learningRate: 2e-4,
@@ -85,7 +85,7 @@ const mockJobs: TrainingJob[] = [
 
 const statusFilters = [
     { value: 'all', label: 'All' },
-    { value: 'training', label: 'Running' },
+    { value: 'running', label: 'Running' },
     { value: 'completed', label: 'Completed' },
     { value: 'failed', label: 'Failed' },
 ]
@@ -100,13 +100,13 @@ export function JobsListPage() {
 
     const filteredJobs = jobs.filter(job => {
         if (statusFilter !== 'all' && job.status !== statusFilter) return false
-        if (searchQuery && !job.project.toLowerCase().includes(searchQuery.toLowerCase())) return false
+        if (searchQuery && !job.projectName.toLowerCase().includes(searchQuery.toLowerCase())) return false
         return true
     })
 
     const getStatusIcon = (status: TrainingJob['status']) => {
         switch (status) {
-            case 'training':
+            case 'running':
             case 'queued':
                 return <Play size={14} className="status-icon running" />
             case 'completed':
@@ -118,13 +118,13 @@ export function JobsListPage() {
         }
     }
 
-    const getStatusVariant = (status: TrainingJob['status']): 'success' | 'error' | 'info' | 'neutral' => {
+    const getStatusClass = (status: TrainingJob['status']): string => {
         switch (status) {
-            case 'training': return 'info'
-            case 'queued': return 'neutral'
-            case 'completed': return 'success'
-            case 'failed': return 'error'
-            case 'cancelled': return 'neutral'
+            case 'running': return 'badge-info'
+            case 'queued': return 'badge-muted'
+            case 'completed': return 'badge-success'
+            case 'failed': return 'badge-danger'
+            case 'cancelled': return 'badge-muted'
         }
     }
 
@@ -153,8 +153,8 @@ export function JobsListPage() {
                             onClick={() => setStatusFilter(filter.value)}
                         >
                             {filter.label}
-                            {filter.value === 'training' && jobs.filter(j => j.status === 'training').length > 0 && (
-                                <span className="filter-count">{jobs.filter(j => j.status === 'training').length}</span>
+                            {filter.value === 'running' && jobs.filter(j => j.status === 'running').length > 0 && (
+                                <span className="filter-count">{jobs.filter(j => j.status === 'running').length}</span>
                             )}
                         </button>
                     ))}
@@ -202,13 +202,13 @@ export function JobsListPage() {
                             {filteredJobs.map(job => (
                                 <tr key={job.id} className={job.status === 'failed' ? 'row-error' : ''}>
                                     <td>
-                                        <Badge variant={getStatusVariant(job.status)} dot>
+                                        <span className={`badge ${getStatusClass(job.status)}`}>
                                             {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                                        </Badge>
+                                        </span>
                                     </td>
                                     <td>
                                         <Link to={`/jobs/${job.id}`} className="job-link">
-                                            <span className="job-project">{job.project}</span>
+                                            <span className="job-project">{job.projectName}</span>
                                             <span className="job-dataset">{job.datasetName}</span>
                                         </Link>
                                     </td>
@@ -219,10 +219,10 @@ export function JobsListPage() {
                                         {formatRelativeTime(job.startedAt)}
                                     </td>
                                     <td style={{ color: 'var(--text-secondary)' }}>
-                                        {job.duration || (job.status === 'training' ? job.eta : '--')}
+                                        {job.duration || (job.status === 'running' ? job.eta : '--')}
                                     </td>
                                     <td style={{ width: 120 }}>
-                                        {job.status === 'training' ? (
+                                        {job.status === 'running' ? (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                                                 <Progress value={job.progress} size="sm" />
                                                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>

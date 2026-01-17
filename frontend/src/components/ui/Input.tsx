@@ -5,12 +5,12 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
     label?: string;
     error?: string;
     hint?: string;
-    leftIcon?: ReactNode;
+    icon?: ReactNode;
     rightIcon?: ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-    ({ className, label, error, hint, leftIcon, rightIcon, id, ...props }, ref) => {
+    ({ className, label, error, hint, icon, rightIcon, id, ...props }, ref) => {
         const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
 
         return (
@@ -21,9 +21,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                     </label>
                 )}
                 <div className="input-container" style={{ position: 'relative' }}>
-                    {leftIcon && (
+                    {icon && (
                         <span className="input-icon input-icon-left">
-                            {leftIcon}
+                            {icon}
                         </span>
                     )}
                     <input
@@ -32,7 +32,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                         className={clsx(
                             'input',
                             error && 'input-error',
-                            leftIcon && 'input-with-left-icon',
+                            icon && 'input-with-left-icon',
                             rightIcon && 'input-with-right-icon',
                             className
                         )}
