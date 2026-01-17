@@ -1,0 +1,93 @@
+# Prometheus Alert Rules
+#
+# Alert configuration for AI Forge
+
+groups:
+  - name: ai-forge
+    rules:
+      # API Health
+      - alert: AIForgeDown
+        expr: up{job="ai-forge"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI Forge API is down"
+          description: "AI Forge API has been unreachable for more than 1 minute."
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="ai-forge"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency"
+          description: "95th percentile latency is above 1 second."
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="ai-forge", status=~"5.."}[5m]) / rate(http_requests_total{job="ai-forge"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate"
+          description: "Error rate is above 5%."
+
+      # Resource Usage
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="ai-forge"} / 1024 / 1024 / 1024 > 12
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 12GB."
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="ai-forge"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80%."
+
+  - name: ollama
+    rules:
+      - alert: OllamaDown
+        expr: up{job="ollama"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ollama is down"
+          description: "Ollama service has been unreachable for more than 1 minute."
+
+      - alert: OllamaSlowResponse
+        expr: ollama_generate_duration_seconds > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ollama slow response"
+          description: "Ollama generation taking more than 30 seconds."
+
+  - name: training
+    rules:
+      - alert: TrainingJobFailed
+        expr: ai_forge_training_jobs_failed_total > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Training job failed"
+          description: "A training job has failed."
+
+      - alert: TrainingJobStuck
+        expr: ai_forge_training_job_duration_seconds > 7200
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Training job stuck"
+          description: "Training job running for more than 2 hours."

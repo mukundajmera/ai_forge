@@ -1,4 +1,6 @@
-# AI Forge API Reference
+# API Reference
+
+Complete documentation of all AI Forge REST API endpoints.
 
 ## Base URL
 
@@ -8,15 +10,13 @@ http://localhost:8000
 
 ## Authentication
 
-Currently no authentication required for local development.
+Currently, no authentication is required for local usage.
 
 ---
 
-## Endpoints
+## Health & Status
 
-### Health & Status
-
-#### `GET /health`
+### GET /health
 
 Check service health.
 
@@ -24,40 +24,41 @@ Check service health.
 ```json
 {
   "status": "healthy",
-  "version": "1.0.0",
-  "ollama_connected": true
+  "timestamp": "2024-01-17T12:00:00Z",
+  "ollama_available": true
 }
 ```
 
-#### `GET /`
+### GET /models
 
-Root endpoint with service info.
+List available models.
 
 **Response:**
 ```json
 {
-  "service": "AI Forge",
-  "version": "1.0.0",
-  "docs": "/docs"
+  "models": [
+    {
+      "name": "ai-forge-project:latest",
+      "size": 1800000000,
+      "modified_at": "2024-01-17T12:00:00Z"
+    }
+  ],
+  "active_model": "ai-forge-project:latest"
 }
 ```
 
 ---
 
-### Fine-Tuning
+## Fine-Tuning
 
-#### `POST /v1/fine-tune`
+### POST /v1/fine-tune
 
-Start a new fine-tuning job.
+Start a fine-tuning job.
 
 **Request:**
-- `request` (JSON): Fine-tuning configuration
-- `data_file` (File): Training data JSON file
-
-**Request Body Schema:**
 ```json
 {
-  "project_name": "string",
+  "project_name": "my-project",
   "base_model": "unsloth/Llama-3.2-3B-Instruct",
   "epochs": 3,
   "learning_rate": 0.0002,
@@ -69,101 +70,209 @@ Start a new fine-tuning job.
 **Response:**
 ```json
 {
-  "job_id": "job_myproject_20260116_123456",
+  "job_id": "job_20240117_120000",
   "status": "queued",
-  "message": "Fine-tuning job queued..."
+  "message": "Fine-tuning job queued"
 }
 ```
 
-#### `GET /v1/fine-tune/{job_id}`
+### GET /status/{job_id}
 
 Get job status.
 
 **Response:**
 ```json
 {
-  "job_id": "job_myproject_20260116_123456",
+  "job_id": "job_20240117_120000",
   "status": "training",
   "progress": 45.5,
   "current_epoch": 2,
   "current_step": 150,
-  "loss": 0.456,
-  "created_at": "2026-01-16T12:34:56",
-  "updated_at": "2026-01-16T12:45:00"
+  "loss": 1.234,
+  "created_at": "2024-01-17T12:00:00Z",
+  "updated_at": "2024-01-17T12:15:00Z"
 }
 ```
 
-#### `GET /v1/fine-tune`
-
-List all jobs.
-
-**Response:** Array of job statuses.
-
-#### `DELETE /v1/fine-tune/{job_id}`
-
-Cancel a running job.
+**Status Values:**
+| Status | Description |
+|--------|-------------|
+| `queued` | Waiting to start |
+| `preparing` | Loading model |
+| `training` | Training in progress |
+| `completed` | Successfully finished |
+| `failed` | Error occurred |
 
 ---
 
-### Chat (OpenAI-Compatible)
+## Chat Completions (OpenAI Compatible)
 
-#### `POST /v1/chat/completions`
+### POST /v1/chat/completions
 
-Chat with a model.
+OpenAI-compatible chat endpoint.
 
 **Request:**
 ```json
 {
-  "model": "myproject:custom",
+  "model": "ai-forge-project:latest",
   "messages": [
-    {"role": "user", "content": "Explain the architecture"}
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Explain this function."}
   ],
   "temperature": 0.7,
-  "max_tokens": 256
+  "max_tokens": 500
 }
 ```
 
 **Response:**
 ```json
 {
-  "id": "chatcmpl-123456",
+  "id": "chatcmpl-123",
   "object": "chat.completion",
-  "created": 1705432000,
-  "model": "myproject:custom",
+  "created": 1705485600,
+  "model": "ai-forge-project:latest",
   "choices": [
     {
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "The architecture consists of..."
+        "content": "This function..."
       },
       "finish_reason": "stop"
     }
-  ]
+  ],
+  "usage": {
+    "prompt_tokens": 25,
+    "completion_tokens": 100,
+    "total_tokens": 125
+  }
 }
 ```
 
 ---
 
-### Models
+## Query
 
-#### `GET /v1/models`
+### POST /v1/query
 
-List available models.
+Simple query endpoint.
+
+**Request:**
+```json
+{
+  "prompt": "What does the DataProcessor class do?",
+  "model": "ai-forge-project:latest",
+  "temperature": 0.7
+}
+```
 
 **Response:**
 ```json
 {
-  "data": [
-    {
-      "id": "llama3:latest",
-      "object": "model",
-      "owned_by": "ai_forge",
-      "created": 1705432000
-    }
-  ]
+  "response": "The DataProcessor class...",
+  "model": "ai-forge-project:latest",
+  "tokens_used": 150
 }
 ```
+
+---
+
+## Deployment
+
+### POST /deploy/{job_id}
+
+Deploy a trained model to Ollama.
+
+**Response:**
+```json
+{
+  "job_id": "job_20240117_120000",
+  "success": true,
+  "model_name": "ai-forge-project:latest",
+  "gguf_path": "./export/model.gguf"
+}
+```
+
+### POST /validate/{job_id}
+
+Run validation on a trained model.
+
+**Response:**
+```json
+{
+  "job_id": "job_20240117_120000",
+  "passed": true,
+  "metrics": {
+    "final_loss": 1.23,
+    "perplexity": 3.42
+  },
+  "report_path": "./output/validation_report.md"
+}
+```
+
+---
+
+## Agent / Retrain
+
+### POST /v1/retrain
+
+Trigger retraining via Repo Guardian.
+
+**Request:**
+```json
+{
+  "project_path": ".",
+  "auto_deploy": true,
+  "force": false
+}
+```
+
+**Response:**
+```json
+{
+  "triggered": true,
+  "reason": "20 files changed (threshold: 20)",
+  "plan": {
+    "plan": [
+      {"id": "1", "name": "extract_data", "estimated_minutes": 5},
+      {"id": "2", "name": "validate_data", "estimated_minutes": 2}
+    ],
+    "estimated_duration_minutes": 47
+  },
+  "job_id": "agent_20240117_120000"
+}
+```
+
+### GET /v1/retrain/monitor
+
+Check repository for changes.
+
+**Parameters:**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `project_path` | string | `.` | Path to repository |
+
+**Response:**
+```json
+{
+  "should_retrain": true,
+  "reason": "20 files changed",
+  "metrics": {
+    "commits_since_last_train": 15,
+    "files_changed": 23,
+    "critical_paths_changed": true
+  },
+  "checked_at": "2024-01-17T12:00:00Z"
+}
+```
+
+### POST /v1/retrain/{job_id}/pause
+
+Pause a running pipeline.
+
+### POST /v1/retrain/{job_id}/resume
+
+Resume a paused pipeline.
 
 ---
 
@@ -177,20 +286,58 @@ All errors follow this format:
 }
 ```
 
-| Status Code | Description |
-|-------------|-------------|
-| 400 | Bad Request |
-| 404 | Not Found |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable |
+### Error Codes
+
+| Code | Meaning |
+|------|---------|
+| 400 | Bad request (invalid parameters) |
+| 404 | Resource not found (job, model) |
+| 500 | Internal server error |
+| 503 | Service unavailable (Ollama not running) |
+
+---
+
+## OpenAI Compatibility
+
+The following OpenAI endpoints are supported:
+
+| OpenAI Endpoint | AI Forge Endpoint |
+|-----------------|-------------------|
+| `POST /v1/chat/completions` | ✅ Supported |
+| `GET /v1/models` | ✅ Mapped to /models |
+| `POST /v1/completions` | ❌ Not supported |
+| `POST /v1/embeddings` | ❌ Not supported |
+
+### Usage with OpenAI SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="not-needed"
+)
+
+response = client.chat.completions.create(
+    model="ai-forge-project:latest",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+
+print(response.choices[0].message.content)
+```
 
 ---
 
 ## Rate Limits
 
-No rate limits for local deployment.
+No rate limits for local usage. For production deployments, implement rate limiting at the reverse proxy level.
 
-## Interactive Documentation
+---
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+## WebSocket (Future)
+
+Real-time training updates via WebSocket are planned for future releases.
+
+```
+ws://localhost:8000/ws/training/{job_id}
+```

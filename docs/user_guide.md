@@ -1,211 +1,292 @@
-# AI Forge User Guide
+# User Guide
 
-## Quick Start
+Step-by-step guide for using AI Forge to fine-tune and deploy models.
 
-### Prerequisites
+## Table of Contents
 
-- **Mac** with Apple Silicon (M1/M2/M3/M4)
-- **16GB+ RAM** recommended (8GB minimum)
-- **Python 3.11+**
-- **Ollama** installed ([ollama.ai](https://ollama.ai))
+1. [Prerequisites](#prerequisites)
+2. [Installation](#installation)
+3. [Fine-Tuning a Model](#fine-tuning-a-model)
+4. [Deploying to Ollama](#deploying-to-ollama)
+5. [Querying Your Model](#querying-your-model)
+6. [Troubleshooting](#troubleshooting)
 
-### Installation
+---
+
+## Prerequisites
+
+### Hardware Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| Mac | M1 | M2/M3 Pro/Max |
+| RAM | 16GB | 32GB+ |
+| Storage | 20GB free | 50GB+ free |
+
+### Software Requirements
+
+- macOS 13+ (Ventura or later)
+- Python 3.11+
+- Homebrew
+- Git
+
+---
+
+## Installation
+
+### Step 1: Clone Repository
 
 ```bash
-# Clone the repository
-cd /path/to/ai_forge
-
-# Create virtual environment
-python3.11 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -e .
-
-# Or from requirements.txt
-pip install -r requirements.txt
+git clone https://github.com/ai-forge/ai-forge.git
+cd ai-forge
 ```
 
-### Verify Installation
+### Step 2: Create Virtual Environment
 
 ```bash
-python -c "from ai_forge import __version__; print(f'AI Forge v{__version__}')"
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### Step 3: Install Dependencies
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Step 4: Install Ollama
+
+```bash
+brew install ollama
+```
+
+### Step 5: Verify Installation
+
+```bash
+python -c "import ai_forge; print('✅ AI Forge installed')"
+ollama --version  # Should show version
 ```
 
 ---
 
-## Usage Guide
+## Fine-Tuning a Model
 
-### 1. Data Extraction
+### Option A: Using the API
 
-Extract training data from your codebase:
-
-```python
-from ai_forge.data_pipeline import CodeMiner, RAFTGenerator, DataValidator
-
-# Mine code from your project
-miner = CodeMiner("/path/to/your/project")
-chunks = miner.extract_all()
-print(f"Extracted {len(chunks)} code chunks")
-
-# Generate RAFT training data
-generator = RAFTGenerator(chunks)
-dataset = generator.generate_dataset(num_samples=1000)
-
-# Validate and clean
-validator = DataValidator(dataset)
-result = validator.validate_all()
-
-if result.is_valid:
-    validator.save_cleaned_data("training_data.json")
-```
-
-### 2. Fine-Tuning
-
-Train your model:
-
-```python
-from ai_forge.training import TrainingForge, ForgeConfig
-
-# Configure training
-config = ForgeConfig(
-    model_name="unsloth/Llama-3.2-3B-Instruct",
-    use_pissa=True,          # 3-5x faster convergence
-    load_in_4bit=True,       # QLoRA for memory efficiency
-    num_epochs=3,
-    output_dir="./output",
-)
-
-# Initialize and train
-forge = TrainingForge(config)
-forge.load_model()
-
-from datasets import load_dataset
-dataset = load_dataset("json", data_files="training_data.json")["train"]
-
-results = forge.train(dataset)
-forge.save_model("./output/my_model")
-```
-
-### 3. Evaluation
-
-Evaluate your fine-tuned model:
-
-```python
-from ai_forge.judge import ModelEvaluator
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-model = AutoModelForCausalLM.from_pretrained("./output/my_model")
-tokenizer = AutoTokenizer.from_pretrained("./output/my_model")
-
-evaluator = ModelEvaluator(model, tokenizer)
-results = evaluator.evaluate_all(test_dataset)
-
-print(results.summary())
-```
-
-### 4. Export & Deploy
-
-Export to Ollama:
-
-```python
-from ai_forge.judge import GGUFExporter, ExportConfig
-
-exporter = GGUFExporter(
-    "./output/my_model",
-    ExportConfig(quantization="q4_k_m")
-)
-
-# Export to GGUF
-result = exporter.export()
-
-# Deploy to Ollama
-exporter.deploy_to_ollama(result.output_path, "myproject:custom")
-```
-
-### 5. Use via API
-
-Start the API server:
+#### 1. Start the Service
 
 ```bash
-uvicorn ai_forge.conductor.service:app --host 0.0.0.0 --port 8000
+python -m conductor.service
 ```
 
-Chat with your model:
+#### 2. Trigger Fine-Tuning
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST http://localhost:8000/v1/retrain \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "myproject:custom",
-    "messages": [{"role": "user", "content": "Explain the architecture"}]
+    "project_path": "/path/to/your/project",
+    "auto_deploy": true,
+    "force": true
   }'
 ```
 
----
+#### 3. Monitor Progress
 
-## Autonomous Mode
+```bash
+# Check status
+curl http://localhost:8000/status/{job_id}
 
-Use RepoGuardian for autonomous orchestration:
+# Or watch continuously
+watch -n 5 "curl -s http://localhost:8000/status/{job_id} | jq"
+```
+
+### Option B: Using Python
 
 ```python
-from ai_forge.antigravity_agent import RepoGuardian
+from antigravity_agent.repo_guardian import RepoGuardian, PipelineConfig
 
-guardian = RepoGuardian("/path/to/project")
+# Configure
+config = PipelineConfig(
+    auto_train=True,
+    auto_deploy=True,
+    quality_threshold=0.7,
+)
 
-# Analyze repository
-report = await guardian.analyze_repository()
-print(report.to_markdown())
+# Initialize Guardian
+guardian = RepoGuardian("/path/to/project", config)
 
-# Run full pipeline (if ready)
-if report.ready_for_training:
-    result = await guardian.run_pipeline()
+# Run pipeline
+import asyncio
+result = asyncio.run(guardian.run_pipeline())
+
+print(f"Success: {result['success']}")
+```
+
+### Option C: Using CLI (Coming Soon)
+
+```bash
+ai-forge train --project /path/to/project --deploy
 ```
 
 ---
 
-## Configuration
+## Deploying to Ollama
 
-### Environment Variables
+### Automatic Deployment
 
-See `.env.example` for all available options.
+If `auto_deploy=True` in your request, the model is automatically deployed after training.
 
-### Training Configuration
+### Manual Deployment
 
-Key parameters in `ForgeConfig`:
+#### 1. Deploy Trained Model
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `model_name` | `unsloth/Llama-3.2-3B-Instruct` | Base model |
-| `use_pissa` | `True` | Use PiSSA initialization |
-| `load_in_4bit` | `True` | QLoRA quantization |
-| `pissa_rank` | `64` | LoRA rank |
-| `num_epochs` | `3` | Training epochs |
-| `learning_rate` | `2e-4` | Learning rate |
+```bash
+curl -X POST http://localhost:8000/deploy/{job_id}
+```
 
----
+#### 2. Verify Deployment
 
-## Troubleshooting
+```bash
+ollama list  # Should show your model
+```
 
-### Out of Memory
+#### 3. Test Model
 
-- Reduce batch size
-- Use smaller model (3B instead of 7B)
-- Ensure 4-bit quantization is enabled
-
-### Slow Training
-
-- Verify Apple Silicon is being used
-- Check for background processes
-- Consider reducing max_seq_length
-
-### Ollama Connection Issues
-
-- Ensure Ollama is running: `ollama serve`
-- Check port 11434 is available
+```bash
+ollama run ai-forge-project:latest "Hello, how are you?"
+```
 
 ---
 
-## Support
+## Querying Your Model
 
-For issues and questions, please refer to the documentation or open an issue on the repository.
+### Using curl
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ai-forge-project:latest",
+    "messages": [
+      {"role": "user", "content": "Explain the DataProcessor class"}
+    ]
+  }'
+```
+
+### Using Python
+
+```python
+import httpx
+
+response = httpx.post(
+    "http://localhost:8000/v1/chat/completions",
+    json={
+        "model": "ai-forge-project:latest",
+        "messages": [{"role": "user", "content": "Hello!"}],
+    },
+)
+
+print(response.json()["choices"][0]["message"]["content"])
+```
+
+### Using OpenAI SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="not-needed",
+)
+
+response = client.chat.completions.create(
+    model="ai-forge-project:latest",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+
+print(response.choices[0].message.content)
+```
+
+### Using Ollama Directly
+
+```bash
+ollama run ai-forge-project:latest "Your question here"
+```
+
+---
+
+## Workflow Examples
+
+### Example 1: Train on Your Codebase
+
+```bash
+# 1. Start service
+python -m conductor.service &
+
+# 2. Extract data and train
+curl -X POST http://localhost:8000/v1/retrain \
+  -d '{"project_path": ".", "force": true, "auto_deploy": true}'
+
+# 3. Wait for completion (check status)
+curl http://localhost:8000/status/agent_20240117_120000
+
+# 4. Query your model
+curl http://localhost:8000/v1/chat/completions \
+  -d '{"messages": [{"role": "user", "content": "Explain main.py"}]}'
+```
+
+### Example 2: Custom Training Configuration
+
+```python
+from training.forge import TrainingForge, FineTuneConfig
+
+config = FineTuneConfig(
+    model_name="unsloth/Llama-3.2-3B-Instruct",
+    num_epochs=5,
+    learning_rate=1e-4,
+    pissa_rank=128,
+    batch_size=4,
+    use_gradient_checkpointing=True,  # For limited RAM
+)
+
+forge = TrainingForge(config)
+forge.load_model()
+
+# Load your data
+from datasets import load_dataset
+dataset = load_dataset("json", data_files="data/training.json")["train"]
+
+# Train
+results = forge.train(dataset)
+print(f"Final loss: {results['train_loss']:.4f}")
+
+# Save
+forge.save_model("./output/my-model")
+```
+
+### Example 3: Evaluate Before Deploying
+
+```bash
+# 1. Train without auto-deploy
+curl -X POST http://localhost:8000/v1/retrain \
+  -d '{"project_path": ".", "force": true, "auto_deploy": false}'
+
+# 2. Run validation
+curl -X POST http://localhost:8000/validate/{job_id}
+
+# 3. Check metrics
+cat ./output/{job_id}/validation_report.md
+
+# 4. If satisfied, deploy
+curl -X POST http://localhost:8000/deploy/{job_id}
+```
+
+---
+
+## Next Steps
+
+- [Configuration Guide](configuration.md) - Tune for your hardware
+- [Developer Guide](developer_guide.md) - Extend the system
+- [API Reference](api_reference.md) - Full API documentation
+- [Troubleshooting](troubleshooting.md) - Common issues
