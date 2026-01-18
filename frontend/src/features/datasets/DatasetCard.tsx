@@ -1,8 +1,7 @@
-import { Download, Trash2, Zap, MoreVertical, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Download, Trash2, Zap, Clock, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge, StatusBadge } from '@/components/ui/Badge'
-import { QualityBar } from '@/components/ui/Progress'
 import { formatRelativeTime, formatNumber } from '@/utils/formatters'
 import type { TrainingDataset } from '@/types'
 
@@ -20,11 +19,10 @@ export function DatasetCard({
     onDelete,
 }: DatasetCardProps) {
     const isReady = dataset.status === 'ready'
-    const isGenerating = dataset.status === 'generating'
     const isError = dataset.status === 'error'
 
     return (
-        <Card className="dataset-card" style={{ position: 'relative' }}>
+        <Card className="dataset-card-wrapper">
             {/* Status indicator */}
             <div style={{
                 position: 'absolute',
@@ -67,7 +65,7 @@ export function DatasetCard({
                 <StatItem
                     label="Format"
                     value={
-                        <Badge variant="neutral">
+                        <Badge variant="info">
                             {dataset.format.toUpperCase()}
                         </Badge>
                     }
@@ -153,7 +151,7 @@ export function DatasetCard({
                 )}
                 {isReady && onDownload && (
                     <Button
-                        variant="secondary"
+                        intent="secondary"
                         size="sm"
                         icon={<Download size={14} />}
                         onClick={() => onDownload(dataset.id)}
@@ -163,7 +161,7 @@ export function DatasetCard({
                 )}
                 {onDelete && (
                     <Button
-                        variant="ghost"
+                        intent="ghost"
                         size="sm"
                         onClick={() => {
                             if (confirm('Delete this dataset?')) {

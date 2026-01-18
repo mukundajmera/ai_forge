@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { GitBranch, Upload, FolderOpen, Search, Filter } from 'lucide-react'
+import { GitBranch, Upload, FolderOpen, Filter } from 'lucide-react'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
@@ -162,7 +162,7 @@ export function AddDataSourceDialog({ isOpen, onClose, onSuccess }: AddDataSourc
             size="lg"
             footer={
                 <>
-                    <Button variant="secondary" onClick={handleClose}>
+                    <Button intent="secondary" onClick={handleClose}>
                         Cancel
                     </Button>
                     <Button

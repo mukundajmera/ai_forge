@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Sparkles, RefreshCw, Check, AlertTriangle, Zap } from 'lucide-react'
+import { Sparkles, RefreshCw, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Progress, QualityBar } from '@/components/ui/Progress'
 import { Card, MetricCard } from '@/components/ui/Card'
@@ -63,7 +63,7 @@ export function RAFTSynthesisPanel({
                 <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                     {onRegenerate && (
                         <Button
-                            variant="secondary"
+                            intent="secondary"
                             icon={<RefreshCw size={16} />}
                             onClick={onRegenerate}
                             disabled={isGenerating}
@@ -84,7 +84,7 @@ export function RAFTSynthesisPanel({
 
             {/* Progress section - shown when generating */}
             {(isGenerating || (job && !isComplete && !isFailed)) && (
-                <Card style={{ marginBottom: 'var(--space-6)' }}>
+                <Card className="progress-card">
                     <div style={{ marginBottom: 'var(--space-4)' }}>
                         <div style={{
                             display: 'flex',
@@ -118,11 +118,7 @@ export function RAFTSynthesisPanel({
 
             {/* Error state */}
             {isFailed && (
-                <Card style={{
-                    marginBottom: 'var(--space-6)',
-                    borderColor: 'var(--error-500)',
-                    background: 'rgba(239, 68, 68, 0.05)'
-                }}>
+                <Card className="error-card">
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -152,7 +148,6 @@ export function RAFTSynthesisPanel({
                     <MetricCard
                         label="Total Examples"
                         value={job?.examplesGenerated || examples.length}
-                        icon={<Zap size={16} />}
                     />
                     <MetricCard
                         label="Avg Quality"
@@ -249,7 +244,7 @@ function ExampleCard({
     return (
         <Card
             onClick={onToggle}
-            style={{ cursor: 'pointer' }}
+            className="example-card"
         >
             <div style={{
                 display: 'flex',
@@ -272,7 +267,7 @@ function ExampleCard({
                         {index}
                     </span>
                     <div>
-                        <Badge variant="neutral" style={{ marginBottom: 'var(--space-2)' }}>
+                        <Badge variant="info">
                             {example.questionType || 'purpose'}
                         </Badge>
                         <p style={{ fontWeight: 500 }}>Q: {example.question}</p>

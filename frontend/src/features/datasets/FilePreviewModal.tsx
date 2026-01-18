@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Code, FileText, ExternalLink, AlertCircle, Ban } from 'lucide-react'
+import { Code, FileText, AlertCircle, Ban } from 'lucide-react'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { QualityBar } from '@/components/ui/Progress'
@@ -40,7 +40,7 @@ export function FilePreviewModal({
                 <>
                     {onExclude && (
                         <Button
-                            variant="ghost"
+                            intent="ghost"
                             icon={<Ban size={16} />}
                             onClick={() => {
                                 onExclude(file.id)
@@ -52,7 +52,7 @@ export function FilePreviewModal({
                     )}
                     {onReparse && (
                         <Button
-                            variant="secondary"
+                            intent="secondary"
                             onClick={() => onReparse(file.id)}
                         >
                             Re-parse with Different Settings
@@ -114,7 +114,7 @@ export function FilePreviewModal({
                         <MetadataRow label="Language" value={file.language || file.type} />
                         <MetadataRow label="Size" value={formatBytes(file.size)} />
                         <MetadataRow label="Status" value={
-                            <Badge variant={file.parseStatus === 'success' ? 'success' : 'error'}>
+                            <Badge variant={file.parseStatus === 'success' ? 'success' : 'danger'}>
                                 {file.parseStatus}
                             </Badge>
                         } />
@@ -304,7 +304,7 @@ function ChunksList({ chunks }: { chunks: CodeChunk[] }) {
                                 {index + 1}
                             </span>
                             <span style={{ fontWeight: 500 }}>{chunk.name}</span>
-                            <Badge variant="neutral">{chunk.type}</Badge>
+                            <Badge variant="info">{chunk.type}</Badge>
                         </div>
                         <QualityBar score={chunk.qualityScore} segments={3} />
                     </div>

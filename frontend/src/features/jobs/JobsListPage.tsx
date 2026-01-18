@@ -2,23 +2,15 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
     Plus,
-    Filter,
     Search,
     Play,
-    CheckCircle,
-    XCircle,
-    Clock,
     ChevronRight,
-    RefreshCw,
-    MoreVertical,
-    Trash2
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Badge, StatusBadge } from '@/components/ui/Badge'
 import { Progress } from '@/components/ui/Progress'
 import { TableSkeleton, EmptyState } from '@/components/ui/EmptyState'
-import { formatRelativeTime, formatDuration } from '@/utils/formatters'
+import { formatRelativeTime } from '@/utils/formatters'
 import type { TrainingJob } from './hooks/useJobs'
 
 // Mock data for initial development
@@ -103,20 +95,6 @@ export function JobsListPage() {
         if (searchQuery && !job.projectName.toLowerCase().includes(searchQuery.toLowerCase())) return false
         return true
     })
-
-    const getStatusIcon = (status: TrainingJob['status']) => {
-        switch (status) {
-            case 'running':
-            case 'queued':
-                return <Play size={14} className="status-icon running" />
-            case 'completed':
-                return <CheckCircle size={14} className="status-icon success" />
-            case 'failed':
-                return <XCircle size={14} className="status-icon error" />
-            case 'cancelled':
-                return <Clock size={14} className="status-icon muted" />
-        }
-    }
 
     const getStatusClass = (status: TrainingJob['status']): string => {
         switch (status) {

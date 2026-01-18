@@ -1,10 +1,8 @@
-import { useState } from 'react'
-import { Plus, Database, Sparkles, Download } from 'lucide-react'
+import { Plus, Database, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { EmptyState, TableSkeleton } from '@/components/ui/EmptyState'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { DatasetGrid } from './DatasetCard'
 import { useDatasets, useDeleteDataset } from './hooks'
-import { api } from '@/api/client'
 
 export function DatasetsPage() {
     const { data: datasets, isLoading, error, refetch } = useDatasets()
@@ -36,7 +34,7 @@ export function DatasetsPage() {
                 </div>
                 <div className="header-actions">
                     <Button
-                        variant="secondary"
+                        intent="secondary"
                         icon={<Sparkles size={16} />}
                         onClick={() => window.location.href = '/data-sources'}
                     >
@@ -98,7 +96,7 @@ export function DatasetsPage() {
                         <p style={{ color: 'var(--error-500)', marginBottom: 'var(--space-4)' }}>
                             Failed to load datasets
                         </p>
-                        <Button variant="secondary" onClick={() => refetch()}>
+                        <Button intent="secondary" onClick={() => refetch()}>
                             Try Again
                         </Button>
                     </div>

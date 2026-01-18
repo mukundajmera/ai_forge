@@ -12,14 +12,12 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Badge, StatusBadge } from '@/components/ui/Badge'
 import { Progress } from '@/components/ui/Progress'
 import { Tabs, TabPanel } from '@/components/ui/Tabs'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { QueryError } from '@/components/ui/QueryError'
 import { formatRelativeTime } from '@/utils/formatters'
 import { useJob, useJobMetrics, useJobLogs, useCancelJob, useStartFineTune } from '@/lib/hooks'
-import type { TrainingJob, JobLog } from '@/types'
 
 export function JobDetailPage() {
   const { jobId } = useParams()
@@ -83,10 +81,11 @@ export function JobDetailPage() {
         projectName: job.projectName,
         datasetId: job.datasetId || 'ds-1',
         baseModel: overrides?.baseModel as string || job.baseModel,
-        epochs: job.config?.epochs || 3,
-        learningRate: job.config?.learningRate || 0.0001,
-        rank: overrides?.rank as number || job.config?.rank || 64,
-        batchSize: overrides?.batchSize as number || job.config?.batchSize || 4,
+        epochs: job.epochs || 3,
+        learningRate: job.learningRate || 0.0001,
+        rank: overrides?.rank as number || job.rank || 64,
+        batchSize: overrides?.batchSize as number || job.batchSize || 4,
+        method: job.method || 'pissa',
       }
       const result = await rerunMutation.mutateAsync(config)
       navigate(`/jobs/${result.jobId}`)
@@ -117,8 +116,8 @@ export function JobDetailPage() {
             <div className="banner-text">
               <h2>Training in Progress</h2>
               <p>
-                Epoch {job.metrics?.currentEpoch || 0}/{job.metrics?.totalEpochs || job.config?.epochs} •
-                Step {job.metrics?.currentStep || 0}/{job.metrics?.totalSteps || '?'} •
+                Epoch {job.currentEpoch || 0}/{job.epochs || 3} •
+                Step {job.currentStep || 0}/{job.totalSteps || '?'} •
                 ETA: {job.eta || 'Calculating...'}
               </p>
             </div>
@@ -160,7 +159,7 @@ export function JobDetailPage() {
             <XCircle size={24} />
             <div className="banner-text">
               <h2>Training Failed</h2>
-              <p>{job.error || 'An error occurred during training'}</p>
+              <p>{typeof job.error === 'string' ? job.error : job.error?.message || 'An error occurred during training'}</p>
             </div>
           </div>
         </div>
@@ -177,12 +176,12 @@ export function JobDetailPage() {
             <div className="suggestion">
               <div className="suggestion-text">
                 <strong>Reduce batch size</strong>
-                <span>Current: {job.config?.batchSize || 4}, Try: {Math.max(1, (job.config?.batchSize || 4) / 2)}</span>
+                <span>Current: {job.batchSize || 4}, Try: {Math.max(1, (job.batchSize || 4) / 2)}</span>
               </div>
               <Button
                 size="sm"
                 intent="secondary"
-                onClick={() => handleRerun({ batchSize: Math.max(1, (job.config?.batchSize || 4) / 2) })}
+                onClick={() => handleRerun({ batchSize: Math.max(1, (job.batchSize || 4) / 2) })}
                 loading={rerunMutation.isPending}
               >
                 Apply & Retry
@@ -191,12 +190,12 @@ export function JobDetailPage() {
             <div className="suggestion">
               <div className="suggestion-text">
                 <strong>Reduce rank</strong>
-                <span>Current: {job.config?.rank || 64}, Try: {Math.max(16, (job.config?.rank || 64) / 2)}</span>
+                <span>Current: {job.rank || 64}, Try: {Math.max(16, (job.rank || 64) / 2)}</span>
               </div>
               <Button
                 size="sm"
                 intent="secondary"
-                onClick={() => handleRerun({ rank: Math.max(16, (job.config?.rank || 64) / 2) })}
+                onClick={() => handleRerun({ rank: Math.max(16, (job.rank || 64) / 2) })}
                 loading={rerunMutation.isPending}
               >
                 Apply & Retry
@@ -257,7 +256,7 @@ export function JobDetailPage() {
                     </svg>
                     <div className="current-loss">
                       <span className="loss-label">Current Loss</span>
-                      <span className="loss-value">{job.metrics?.loss?.toFixed(2) || '--'}</span>
+                      <span className="loss-value">{job.loss?.toFixed(2) || '--'}</span>
                     </div>
                   </div>
                 ) : (
@@ -273,7 +272,7 @@ export function JobDetailPage() {
                     </svg>
                     <div className="current-loss">
                       <span className="loss-label">Current Loss</span>
-                      <span className="loss-value">{job.metrics?.loss?.toFixed(2) || '--'}</span>
+                      <span className="loss-value">{job.loss?.toFixed(2) || '--'}</span>
                     </div>
                   </div>
                 )}
@@ -305,10 +304,10 @@ export function JobDetailPage() {
               <div className="config-grid">
                 <ConfigItem label="Base Model" value={job.baseModel} />
                 <ConfigItem label="Dataset" value={job.datasetName || 'N/A'} />
-                <ConfigItem label="Epochs" value={`${job.config?.epochs || 3}`} />
-                <ConfigItem label="Learning Rate" value={(job.config?.learningRate || 0.0001).toExponential(1)} />
-                <ConfigItem label="Rank (LoRA)" value={`${job.config?.rank || 64}`} />
-                <ConfigItem label="Batch Size" value={`${job.config?.batchSize || 4}`} />
+                <ConfigItem label="Epochs" value={`${job.epochs || 3}`} />
+                <ConfigItem label="Learning Rate" value={(job.learningRate || 0.0001).toExponential(1)} />
+                <ConfigItem label="Rank (LoRA)" value={`${job.rank || 64}`} />
+                <ConfigItem label="Batch Size" value={`${job.batchSize || 4}`} />
               </div>
             </Card>
           </TabPanel>
@@ -329,14 +328,14 @@ export function JobDetailPage() {
             </div>
           </Card>
 
-          <Card style={{ marginTop: 'var(--space-4)' }}>
+          <Card className="sidebar-config-card">
             <h3>Configuration</h3>
             <div className="config-summary">
               <ConfigItem label="Dataset" value={job.datasetName || 'N/A'} />
-              <ConfigItem label="Epochs" value={`${job.metrics?.currentEpoch || 0}/${job.config?.epochs || 3}`} />
-              <ConfigItem label="Learning Rate" value={(job.config?.learningRate || 0.0001).toExponential(1)} />
-              <ConfigItem label="Rank" value={`${job.config?.rank || 64}`} />
-              <ConfigItem label="Batch Size" value={`${job.config?.batchSize || 4}`} />
+              <ConfigItem label="Epochs" value={`${job.currentEpoch || 0}/${job.epochs || 3}`} />
+              <ConfigItem label="Learning Rate" value={(job.learningRate || 0.0001).toExponential(1)} />
+              <ConfigItem label="Rank" value={`${job.rank || 64}`} />
+              <ConfigItem label="Batch Size" value={`${job.batchSize || 4}`} />
             </div>
           </Card>
         </div>
@@ -584,6 +583,10 @@ export function JobDetailPage() {
                     font-weight: 600;
                     margin-bottom: var(--space-4);
                     color: var(--text-secondary);
+                }
+
+                .sidebar-config-card {
+                    margin-top: var(--space-4);
                 }
 
                 .checkpoints-list {

@@ -1,11 +1,12 @@
-import { CheckCircle, XCircle, Clock, Loader2, Ban, AlertCircle } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Loader2, Ban } from 'lucide-react'
 
-type Status = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+// Status types - includes job statuses, dataset statuses, and data source statuses
+type Status = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'error' | 'generating' | 'ready' | 'syncing' | 'parsing'
 type ModelStatus = 'active' | 'candidate' | 'deprecated' | 'exporting'
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 type BadgeSize = 'sm' | 'md'
 
-// Status configuration for job/task badges
+// Status configuration for job/task/dataset badges
 const statusConfig: Record<Status, {
     variant: BadgeVariant
     icon: typeof CheckCircle
@@ -17,6 +18,12 @@ const statusConfig: Record<Status, {
     completed: { variant: 'success', icon: CheckCircle, label: 'Completed' },
     failed: { variant: 'danger', icon: XCircle, label: 'Failed' },
     cancelled: { variant: 'muted', icon: Ban, label: 'Cancelled' },
+    // Dataset/DataSource statuses
+    error: { variant: 'danger', icon: XCircle, label: 'Error' },
+    generating: { variant: 'info', icon: Loader2, label: 'Generating', animate: true },
+    ready: { variant: 'success', icon: CheckCircle, label: 'Ready' },
+    syncing: { variant: 'info', icon: Loader2, label: 'Syncing', animate: true },
+    parsing: { variant: 'info', icon: Loader2, label: 'Parsing', animate: true },
 }
 
 const modelStatusConfig: Record<ModelStatus, {

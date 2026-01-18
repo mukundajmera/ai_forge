@@ -55,7 +55,7 @@ export function DataSourcesPage() {
                 </div>
                 <div className="header-actions">
                     <Button
-                        variant="secondary"
+                        intent="secondary"
                         icon={<Sparkles size={16} />}
                         onClick={() => window.location.href = '/datasets'}
                     >
@@ -79,7 +79,7 @@ export function DataSourcesPage() {
                         <p style={{ color: 'var(--error-500)', marginBottom: 'var(--space-4)' }}>
                             Failed to load data sources
                         </p>
-                        <Button variant="secondary" onClick={() => refetch()}>
+                        <Button intent="secondary" onClick={() => refetch()}>
                             Try Again
                         </Button>
                     </div>
