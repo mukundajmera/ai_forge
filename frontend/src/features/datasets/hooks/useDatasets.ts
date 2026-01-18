@@ -7,7 +7,7 @@ import { POLLING_INTERVALS } from '@/utils/constants'
 export function useDatasets() {
     return useQuery({
         queryKey: ['datasets'],
-        queryFn: () => api.get<TrainingDataset[]>('/datasets'),
+        queryFn: () => api.get<TrainingDataset[]>('/api/datasets'),
     })
 }
 
@@ -15,7 +15,7 @@ export function useDatasets() {
 export function useDataset(id: string) {
     return useQuery({
         queryKey: ['datasets', id],
-        queryFn: () => api.get<TrainingDataset>(`/datasets/${id}`),
+        queryFn: () => api.get<TrainingDataset>(`/api/datasets/${id}`),
         enabled: !!id,
     })
 }
@@ -24,7 +24,7 @@ export function useDataset(id: string) {
 export function useDatasetPreview(id: string) {
     return useQuery({
         queryKey: ['datasets', id, 'preview'],
-        queryFn: () => api.get<DatasetPreview>(`/datasets/${id}/preview`),
+        queryFn: () => api.get<DatasetPreview>(`/api/datasets/${id}/preview`),
         enabled: !!id,
     })
 }
@@ -35,7 +35,7 @@ export function useGenerateDataset() {
 
     return useMutation({
         mutationFn: (request: GenerateDatasetRequest) =>
-            api.post<{ jobId: string; datasetId: string }>('/datasets/generate', request),
+            api.post<{ jobId: string; datasetId: string }>('/api/datasets/generate', request),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['datasets'] })
         },
@@ -53,7 +53,7 @@ export function useGenerationStatus(
         queryKey: ['generation', jobId],
         queryFn: async () => {
             if (!jobId) throw new Error('No job ID');
-            const job = await api.get<GenerationJob>(`/datasets/generation/${jobId}`);
+            const job = await api.get<GenerationJob>(`/api/datasets/generation/${jobId}`);
 
             if (job.status === 'complete') {
                 onComplete?.(job);
@@ -77,7 +77,7 @@ export function useDeleteDataset() {
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: (datasetId: string) => api.delete(`/datasets/${datasetId}`),
+        mutationFn: (datasetId: string) => api.delete(`/api/datasets/${datasetId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['datasets'] })
         },

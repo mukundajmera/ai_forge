@@ -18,7 +18,7 @@ function App() {
                     <Route path="/datasets" element={<DataSourcesPage />} />
                     <Route path="/datasets/generated" element={<DatasetsPage />} />
                     <Route path="/jobs" element={<JobsListPage />} />
-                    <Route path="/jobs/new" element={<JobDetailPage />} />
+                    <Route path="/jobs/new" element={<JobsListPage isCreating />} />
                     <Route path="/jobs/:jobId" element={<JobDetailPage />} />
                     <Route path="/models" element={<ModelsPage />} />
                     <Route path="/monitoring" element={<MonitoringPage />} />

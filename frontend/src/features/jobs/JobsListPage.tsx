@@ -1,79 +1,20 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
     Plus,
     Search,
     Play,
     ChevronRight,
+    AlertCircle,
+    RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Progress } from '@/components/ui/Progress'
 import { TableSkeleton, EmptyState } from '@/components/ui/EmptyState'
 import { formatRelativeTime } from '@/utils/formatters'
-import type { TrainingJob } from './hooks/useJobs'
-
-// Mock data for initial development
-const mockJobs: TrainingJob[] = [
-    {
-        id: 'job-1',
-        projectName: 'my-project',
-        baseModel: 'Llama-3.2-3B',
-        status: 'running',
-        progress: 78,
-        currentEpoch: 2,
-        epochs: 3,
-        currentStep: 156,
-        totalSteps: 234,
-        loss: 1.23,
-        learningRate: 2e-4,
-        rank: 64,
-        batchSize: 2,
-        datasetId: 'ds-1',
-        datasetName: 'my-codebase',
-        startedAt: new Date(Date.now() - 45 * 60000).toISOString(),
-        eta: '12 min',
-        checkpoints: ['step_100', 'step_150'],
-    },
-    {
-        id: 'job-2',
-        projectName: 'api-helper',
-        baseModel: 'Llama-3.2-3B',
-        status: 'completed',
-        progress: 100,
-        currentEpoch: 3,
-        epochs: 3,
-        loss: 0.89,
-        learningRate: 2e-4,
-        rank: 64,
-        batchSize: 2,
-        datasetId: 'ds-2',
-        datasetName: 'api-docs',
-        startedAt: new Date(Date.now() - 24 * 60 * 60000).toISOString(),
-        completedAt: new Date(Date.now() - 22 * 60 * 60000).toISOString(),
-        duration: '1:45:12',
-        checkpoints: ['final'],
-    },
-    {
-        id: 'job-3',
-        projectName: 'test-run',
-        baseModel: 'Llama-3.2-7B',
-        status: 'failed',
-        progress: 18,
-        currentEpoch: 1,
-        epochs: 3,
-        currentStep: 42,
-        totalSteps: 150,
-        learningRate: 2e-4,
-        rank: 128,
-        batchSize: 4,
-        datasetId: 'ds-1',
-        datasetName: 'my-codebase',
-        startedAt: new Date(Date.now() - 2 * 24 * 60 * 60000).toISOString(),
-        error: 'OutOfMemoryError: Training ran out of memory at step 42/150',
-        checkpoints: [],
-    },
-]
+import { useJobs, type TrainingJob } from './hooks/useJobs'
+import { NewFineTuneDialog } from './components/NewFineTuneDialog'
 
 const statusFilters = [
     { value: 'all', label: 'All' },
@@ -82,13 +23,13 @@ const statusFilters = [
     { value: 'failed', label: 'Failed' },
 ]
 
-export function JobsListPage() {
+export function JobsListPage({ isCreating = false }: { isCreating?: boolean }) {
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
+    const navigate = useNavigate()
 
-    // In production: const { data: jobs, isLoading } = useJobs({ status: statusFilter })
-    const jobs = mockJobs
-    const isLoading = false
+    // Use the real hook - it will show error state if backend unavailable
+    const { data: jobs = [], isLoading, error, refetch } = useJobs()
 
     const filteredJobs = jobs.filter(job => {
         if (statusFilter !== 'all' && job.status !== statusFilter) return false
@@ -150,6 +91,21 @@ export function JobsListPage() {
             {/* Jobs Table */}
             {isLoading ? (
                 <TableSkeleton rows={5} cols={8} />
+            ) : error ? (
+                <EmptyState
+                    icon={<AlertCircle size={64} />}
+                    title="Unable to load jobs"
+                    description="Could not connect to the backend server. Make sure the AI Forge backend is running."
+                    action={
+                        <Button
+                            icon={<RefreshCw size={16} />}
+                            intent="secondary"
+                            onClick={() => refetch()}
+                        >
+                            Retry
+                        </Button>
+                    }
+                />
             ) : filteredJobs.length === 0 ? (
                 <EmptyState
                     icon={<Play size={64} />}
@@ -339,6 +295,22 @@ export function JobsListPage() {
         .status-icon.error { color: var(--error-500); }
         .status-icon.muted { color: var(--text-muted); }
       `}</style>
+            <style>{`
+        .jobs-page {
+          padding: var(--space-8);
+          max-width: 1400px;
+        }
+
+        /* ... existing styles ... */
+        /* Truncated for brevity, assuming existing styles remain */
+      `}</style>
+
+            {isCreating && (
+                <NewFineTuneDialog
+                    open={true}
+                    onClose={() => navigate('/jobs')}
+                />
+            )}
         </div>
     )
 }

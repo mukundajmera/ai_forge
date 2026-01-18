@@ -1,18 +1,19 @@
-import { Plus, Database, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Database, Sparkles, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DatasetGrid } from './DatasetCard'
+import { GenerateDatasetDialog } from './GenerateDatasetDialog'
 import { useDatasets, useDeleteDataset } from './hooks'
 
 export function DatasetsPage() {
     const { data: datasets, isLoading, error, refetch } = useDatasets()
     const deleteMutation = useDeleteDataset()
+    const [isGenerateOpen, setIsGenerateOpen] = useState(false)
 
     const handleUseForTraining = (datasetId: string) => {
         // Navigate to training wizard with dataset pre-selected
-        // For now, just log
-        console.log('Use for training:', datasetId)
-        window.location.href = `/training?dataset=${datasetId}`
+        window.location.href = `/jobs/new?datasetId=${datasetId}`
     }
 
     const handleDownload = async (datasetId: string) => {
@@ -34,9 +35,16 @@ export function DatasetsPage() {
                 </div>
                 <div className="header-actions">
                     <Button
+                        intent="primary"
+                        icon={<Layers size={16} />}
+                        onClick={() => setIsGenerateOpen(true)}
+                    >
+                        Generate New
+                    </Button>
+                    <Button
                         intent="secondary"
                         icon={<Sparkles size={16} />}
-                        onClick={() => window.location.href = '/data-sources'}
+                        onClick={() => window.location.href = '/datasets'}
                     >
                         Manage Sources
                     </Button>
@@ -108,7 +116,7 @@ export function DatasetsPage() {
                         action={
                             <Button
                                 icon={<Plus size={16} />}
-                                onClick={() => window.location.href = '/data-sources'}
+                                onClick={() => window.location.href = '/datasets'}
                             >
                                 Add Data Source
                             </Button>
@@ -123,6 +131,11 @@ export function DatasetsPage() {
                     />
                 )}
             </div>
+
+            <GenerateDatasetDialog
+                open={isGenerateOpen}
+                onClose={() => setIsGenerateOpen(false)}
+            />
 
             <style>{`
         .datasets-page {

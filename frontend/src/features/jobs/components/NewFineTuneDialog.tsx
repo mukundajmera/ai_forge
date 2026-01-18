@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,16 +25,22 @@ import {
 // Schema & Types
 // =============================================================================
 
+const optionalNumber = (schema: z.ZodNumber) =>
+    z.preprocess(
+        (val) => (typeof val === 'number' && isNaN(val) ? undefined : val),
+        schema.optional()
+    );
+
 const fineTuneSchema = z.object({
     projectName: z.string().min(1, 'Project name is required').max(50, 'Max 50 characters'),
     datasetId: z.string().min(1, 'Please select a dataset'),
     baseModel: z.enum(['Llama-3.2-3B', 'Llama-3.2-7B', 'Llama-3.2-13B']),
     preset: z.enum(['fast', 'balanced', 'thorough']),
     // Advanced options (override preset defaults)
-    epochs: z.number().min(1).max(10).optional(),
-    learningRate: z.number().min(0.00001).max(0.01).optional(),
-    rank: z.number().min(8).max(256).optional(),
-    batchSize: z.number().min(1).max(8).optional(),
+    epochs: optionalNumber(z.number().min(1).max(10)),
+    learningRate: optionalNumber(z.number().min(0.00001).max(0.01)),
+    rank: optionalNumber(z.number().min(8).max(256)),
+    batchSize: optionalNumber(z.number().min(1).max(8)),
 });
 
 type FineTuneFormData = z.infer<typeof fineTuneSchema>;
@@ -92,9 +98,13 @@ interface NewFineTuneDialogProps {
 
 export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const preselectedDatasetId = searchParams.get('datasetId');
+
     const [step, setStep] = useState(1);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const { data: datasets, isLoading: datasetsLoading } = useDatasets();
+    console.log('NewFineTuneDialog: Datasets:', datasets, 'Loading:', datasetsLoading);
     const startFineTune = useStartFineTune();
 
     const {
@@ -104,10 +114,10 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
         formState: { errors },
         reset,
     } = useForm<FineTuneFormData>({
-        resolver: zodResolver(fineTuneSchema),
+        resolver: zodResolver(fineTuneSchema) as any,
         defaultValues: {
             projectName: '',
-            datasetId: '',
+            datasetId: preselectedDatasetId || '',
             baseModel: 'Llama-3.2-3B',
             preset: 'balanced',
         },
@@ -131,14 +141,14 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
     const onSubmit = async (data: FineTuneFormData) => {
         try {
             const config = {
-                projectName: data.projectName,
-                baseModel: data.baseModel,
-                datasetId: data.datasetId,
+                project_name: data.projectName,
+                base_model: data.baseModel,
+                dataset_id: data.datasetId,
                 epochs: data.epochs || preset.epochs,
-                learningRate: data.learningRate || preset.lr,
+                learning_rate: data.learningRate || preset.lr,
                 rank: data.rank || preset.rank,
-                batchSize: data.batchSize || preset.batchSize,
-                method: 'pissa' as const,
+                batch_size: data.batchSize || preset.batchSize,
+                use_pissa: true,
             };
 
             const result = await startFineTune.mutateAsync(config);
@@ -157,7 +167,7 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
 
     return (
         <Dialog isOpen={open} onClose={handleClose} title="New Fine-Tune" size="lg">
-            <form onSubmit={handleSubmit(onSubmit)}>
+            <form onSubmit={handleSubmit(onSubmit as any)}>
                 {/* Progress Indicator */}
                 <div className="wizard-progress">
                     {[1, 2, 3].map((s) => (

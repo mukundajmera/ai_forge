@@ -29,7 +29,13 @@ export function useUploadFiles(options: UseUploadFilesOptions = {}) {
             setUploadProgress(initialProgress)
 
             // Upload files
-            const result = await api.upload('/data-sources/upload', files, (progress) => {
+            const result = await api.uploadFiles(files, {
+                name: 'Upload',
+                type: 'upload',
+                includePatterns: [],
+                excludePatterns: [],
+                fileTypes: []
+            }, (progress) => {
                 setUploadProgress(prev => prev.map(p => ({
                     ...p,
                     progress,

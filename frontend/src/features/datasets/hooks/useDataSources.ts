@@ -6,7 +6,7 @@ import type { DataSource, AddDataSourceRequest, ParsedFile } from '@/types'
 export function useDataSources() {
     return useQuery({
         queryKey: ['data-sources'],
-        queryFn: () => api.get<DataSource[]>('/data-sources'),
+        queryFn: () => api.get<DataSource[]>('/api/data-sources'),
     })
 }
 
@@ -14,7 +14,7 @@ export function useDataSources() {
 export function useDataSource(id: string) {
     return useQuery({
         queryKey: ['data-sources', id],
-        queryFn: () => api.get<DataSource>(`/data-sources/${id}`),
+        queryFn: () => api.get<DataSource>(`/api/data-sources/${id}`),
         enabled: !!id,
     })
 }
@@ -23,7 +23,7 @@ export function useDataSource(id: string) {
 export function useDataSourceFiles(sourceId: string) {
     return useQuery({
         queryKey: ['data-sources', sourceId, 'files'],
-        queryFn: () => api.get<ParsedFile[]>(`/data-sources/${sourceId}/files`),
+        queryFn: () => api.get<ParsedFile[]>(`/api/data-sources/${sourceId}/files`),
         enabled: !!sourceId,
     })
 }
@@ -34,7 +34,7 @@ export function useAddDataSource() {
 
     return useMutation({
         mutationFn: (request: AddDataSourceRequest) =>
-            api.post<DataSource>('/data-sources', request),
+            api.post<DataSource>('/api/data-sources', request),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['data-sources'] })
         },
@@ -47,7 +47,7 @@ export function useSyncDataSource() {
 
     return useMutation({
         mutationFn: (sourceId: string) =>
-            api.post<{ jobId: string }>(`/data-sources/${sourceId}/sync`),
+            api.post<{ jobId: string }>(`/api/data-sources/${sourceId}/sync`),
         onSuccess: (_, sourceId) => {
             queryClient.invalidateQueries({ queryKey: ['data-sources', sourceId] })
             queryClient.invalidateQueries({ queryKey: ['data-sources'] })
@@ -61,7 +61,7 @@ export function useDeleteDataSource() {
 
     return useMutation({
         mutationFn: (sourceId: string) =>
-            api.delete(`/data-sources/${sourceId}`),
+            api.delete(`/api/data-sources/${sourceId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['data-sources'] })
         },

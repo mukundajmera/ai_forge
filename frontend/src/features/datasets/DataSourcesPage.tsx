@@ -14,12 +14,14 @@ import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState, TableSkeleton } from '@/components/ui/EmptyState'
 import { AddDataSourceDialog } from './AddDataSourceDialog'
+import { SourceFilesDialog } from './SourceFilesDialog'
 import { useDataSources, useSyncDataSource, useDeleteDataSource } from './hooks'
 import { formatBytes, formatRelativeTime, truncatePath } from '@/utils/formatters'
 import type { DataSource } from '@/types'
 
 export function DataSourcesPage() {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+    const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
     const { data: dataSources, isLoading, error, refetch } = useDataSources()
     const syncMutation = useSyncDataSource()
     const deleteMutation = useDeleteDataSource()
@@ -184,7 +186,8 @@ export function DataSourcesPage() {
                                                 </button>
                                                 <button
                                                     className="btn btn-ghost btn-icon tooltip"
-                                                    data-tooltip="View Details"
+                                                    data-tooltip="View Files"
+                                                    onClick={() => setSelectedSourceId(source.id)}
                                                 >
                                                     <ChevronRight size={14} />
                                                 </button>
@@ -207,6 +210,15 @@ export function DataSourcesPage() {
                     setIsAddDialogOpen(false)
                 }}
             />
+
+            {/* Source Files Dialog */}
+            {selectedSourceId && (
+                <SourceFilesDialog
+                    sourceId={selectedSourceId}
+                    sourceName={dataSources?.find(s => s.id === selectedSourceId)?.name || 'Files'}
+                    onClose={() => setSelectedSourceId(null)}
+                />
+            )}
 
             <style>{`
         .data-sources-page {
