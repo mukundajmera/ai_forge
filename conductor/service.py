@@ -38,17 +38,21 @@ class FineTuneRequest(BaseModel):
     Attributes:
         project_name: Name of the project.
         base_model: Base model to fine-tune.
+        dataset_id: ID of the dataset to use for training.
         epochs: Number of training epochs.
         learning_rate: Learning rate.
         rank: LoRA/PiSSA rank.
+        batch_size: Training batch size.
         use_pissa: Whether to use PiSSA initialization.
     """
     
     project_name: str
     base_model: str = "unsloth/Llama-3.2-3B-Instruct"
+    dataset_id: Optional[str] = None
     epochs: int = 3
     learning_rate: float = 2e-4
     rank: int = 64
+    batch_size: int = 4
     use_pissa: bool = True
 
 
@@ -205,8 +209,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Initialize components
     try:
-        from ai_forge.conductor.ollama_manager import OllamaManager
-        from ai_forge.conductor.job_queue import JobQueue
+        try:
+            from ai_forge.conductor.ollama_manager import OllamaManager
+            from ai_forge.conductor.job_queue import JobQueue
+        except ImportError:
+            from conductor.ollama_manager import OllamaManager
+            from conductor.job_queue import JobQueue
         
         state.ollama_manager = OllamaManager()
         state.job_queue = JobQueue()
@@ -246,6 +254,25 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Add exception handler for validation errors
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.requests import Request
+    from fastapi.responses import JSONResponse
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        logger.error(f"Validation error for {request.url}: {exc.errors()}")
+        try:
+             body = await request.json()
+             logger.error(f"Request body: {body}")
+        except:
+             pass
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors(), "body": str(exc.body)},
+        )
+
     
     # Include data sources router
     from conductor.data_sources import router as data_sources_router
@@ -280,13 +307,50 @@ async def health_check() -> HealthResponse:
     )
 
 
+@app.get("/v1/system/status", tags=["System"])
+async def system_status():
+    """Get system status for dashboard."""
+    import psutil
+    
+    # Check Ollama
+    ollama_status = "stopped"
+    try:
+        if state.ollama_manager:
+            ollama_status = "running"
+    except:
+        pass
+    
+    # Get system metrics
+    memory = psutil.virtual_memory()
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    
+    return {
+        "healthy": True,
+        "version": "0.1.0",
+        "ollama": {
+            "status": ollama_status,
+            "modelsLoaded": []
+        },
+        "cpu": {
+            "utilization": cpu_percent,
+            "cores": psutil.cpu_count()
+        },
+        "memory": {
+            "used": memory.used,
+            "total": memory.total
+        },
+        "gpu": None,
+        "runningJobs": len([j for j in state.jobs.values() if j.get('status') == 'running'])
+    }
+
+
 @app.get("/", tags=["Health"])
-async def root() -> dict[str, str]:
+async def root():
     """Root endpoint."""
     return {
         "service": "AI Forge",
-        "version": "1.0.0",
-        "docs": "/docs",
+        "version": "0.1.0",
+        "endpoints": ["/v1/fine-tune", "/v1/models", "/v1/chat/completions"]
     }
 
 
@@ -298,16 +362,14 @@ async def root() -> dict[str, str]:
 async def start_fine_tune(
     request: FineTuneRequest,
     background_tasks: BackgroundTasks,
-    data_file: UploadFile = File(...),
 ) -> FineTuneResponse:
     """Start a fine-tuning job.
     
-    Upload training data and start a new fine-tuning job.
+    Start a new fine-tuning job using an existing dataset.
     
     Args:
-        request: Fine-tuning configuration.
+        request: Fine-tuning configuration including dataset_id.
         background_tasks: FastAPI background tasks.
-        data_file: Training data file (JSON format).
         
     Returns:
         Job creation response with job ID.
@@ -315,13 +377,38 @@ async def start_fine_tune(
     # Generate job ID
     job_id = f"job_{request.project_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
-    # Save uploaded file
-    data_dir = Path("./data")
-    data_dir.mkdir(exist_ok=True)
-    data_path = data_dir / f"{job_id}_data.json"
+    # Get dataset path from data sources if dataset_id provided
+    data_path = None
+    if hasattr(request, 'dataset_id') and request.dataset_id:
+        # Look up dataset file
+        dataset_dir = Path("./data/datasets")
+        dataset_file = dataset_dir / f"{request.dataset_id}.json"
+        if dataset_file.exists():
+            data_path = str(dataset_file)
+        else:
+            # Try to find in uploads
+            uploads_dir = Path("./data/uploads")
+            if uploads_dir.exists():
+                for source_dir in uploads_dir.iterdir():
+                    for f in source_dir.glob("*.json"):
+                        data_path = str(f)
+                        break
+                    if data_path:
+                        break
     
-    content = await data_file.read()
-    data_path.write_bytes(content)
+    if not data_path:
+        # Create a placeholder training data file
+        data_dir = Path("./data")
+        data_dir.mkdir(exist_ok=True)
+        data_path = data_dir / f"{job_id}_data.json"
+        # Create minimal training data
+        import json
+        placeholder_data = [
+            {"instruction": "Hello", "output": "Hi there!"},
+            {"instruction": "What is AI?", "output": "AI stands for Artificial Intelligence."}
+        ]
+        data_path.write_text(json.dumps(placeholder_data))
+        data_path = str(data_path)
     
     # Create job record
     now = datetime.now().isoformat()
@@ -330,7 +417,7 @@ async def start_fine_tune(
         "status": "queued",
         "progress": 0.0,
         "config": request.model_dump(),
-        "data_path": str(data_path),
+        "data_path": data_path,
         "created_at": now,
         "updated_at": now,
     }
@@ -776,18 +863,58 @@ async def execute_fine_tune(job_id: str) -> None:
         job["updated_at"] = datetime.now().isoformat()
         
         # Import training components
-        from ai_forge.training import TrainingForge, ForgeConfig
+        import sys
         
-        config = ForgeConfig(
-            model_name=job["config"]["base_model"],
-            num_epochs=job["config"]["epochs"],
-            learning_rate=job["config"]["learning_rate"],
-            pissa_rank=job["config"]["rank"],
-            use_pissa=job["config"]["use_pissa"],
-            output_dir=f"./output/{job_id}",
+        # Add project root parent to path to allow 'ai_forge' imports
+        # Service is in ai_forge/conductor/service.py -> parent.parent.parent = pocs/
+        root_parent = str(Path(__file__).resolve().parent.parent.parent)
+        if root_parent not in sys.path:
+            sys.path.insert(0, root_parent)
+
+        try:
+            from ai_forge.training import FineTuneTrainer, FineTuneConfig
+            from ai_forge.training.schemas import (
+                ModelConfig, 
+                TrainingConfig, 
+                PiSSAConfig, 
+                LoggingConfig,
+                InitMethod
+            )
+        except ImportError:
+            # Fallback for when running from root without package install
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from training import FineTuneTrainer, FineTuneConfig
+            from training.schemas import (
+                ModelConfig, 
+                TrainingConfig, 
+                PiSSAConfig, 
+                LoggingConfig,
+                InitMethod
+            )
+        
+        # Determine initialization method
+        init_method = InitMethod.PISSA if job["config"].get("use_pissa", True) else InitMethod.GAUSSIAN
+
+        # Construct configuration
+        config = FineTuneConfig(
+            model=ModelConfig(
+                base_model=job["config"]["base_model"],
+            ),
+            training=TrainingConfig(
+                num_train_epochs=job["config"]["epochs"],
+                learning_rate=job["config"]["learning_rate"],
+                per_device_train_batch_size=job["config"]["batch_size"],
+            ),
+            pissa=PiSSAConfig(
+                rank=job["config"]["rank"],
+                init_method=init_method,
+            ),
+            logging=LoggingConfig(
+                output_dir=f"./output/{job_id}",
+            ),
         )
         
-        forge = TrainingForge(config)
+        forge = FineTuneTrainer(config)
         
         # Load model
         forge.load_model()

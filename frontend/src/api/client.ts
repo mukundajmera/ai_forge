@@ -115,13 +115,16 @@ class APIClient {
 
         try {
             // Attempt real network request first
+            // Don't set Content-Type for FormData - browser will set it with correct boundary
+            const isFormData = fetchOptions?.body instanceof FormData;
+            const headers: HeadersInit = isFormData
+                ? { ...fetchOptions?.headers }
+                : { 'Content-Type': 'application/json', ...fetchOptions?.headers };
+
             const response = await fetch(url, {
                 ...fetchOptions,
                 signal: abortController?.signal,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...fetchOptions?.headers,
-                },
+                headers,
             });
 
             if (!response.ok) {
@@ -253,11 +256,55 @@ class APIClient {
     // =========================================================================
 
     async getJobs(): Promise<TrainingJob[]> {
-        return this.request<TrainingJob[]>('/v1/fine-tune');
+        const response = await this.request<any[]>('/v1/fine-tune');
+        // Map backend snake_case to frontend camelCase
+        return response.map(job => ({
+            id: job.job_id,
+            projectName: job.config?.project_name || 'Unknown',
+            status: job.status,
+            baseModel: job.config?.base_model || 'Unknown',
+            datasetId: job.config?.dataset_id || '',
+            epochs: job.config?.epochs || 0,
+            learningRate: job.config?.learning_rate || 0,
+            rank: job.config?.rank || 0,
+            batchSize: job.config?.batch_size || 0,
+            method: 'pissa',
+            progress: job.progress || 0,
+            currentEpoch: job.current_epoch,
+            currentStep: job.current_step,
+            totalSteps: 0,
+            loss: job.loss,
+            error: job.error,
+            createdAt: job.created_at,
+            startedAt: job.started_at,
+            completedAt: job.completed_at,
+        }));
     }
 
     async getJob(id: string): Promise<TrainingJob> {
-        return this.request<TrainingJob>(`/v1/fine-tune/${id}`);
+        const job = await this.request<any>(`/v1/fine-tune/${id}`);
+        // Map backend snake_case to frontend camelCase
+        return {
+            id: job.job_id,
+            projectName: job.config?.project_name || id,
+            status: job.status,
+            baseModel: job.config?.base_model || 'Unknown',
+            datasetId: job.config?.dataset_id || '',
+            epochs: job.config?.epochs || 0,
+            learningRate: job.config?.learning_rate || 0,
+            rank: job.config?.rank || 0,
+            batchSize: job.config?.batch_size || 0,
+            method: 'pissa',
+            progress: job.progress || 0,
+            currentEpoch: job.current_epoch,
+            currentStep: job.current_step,
+            totalSteps: 0,
+            loss: job.loss,
+            error: job.error,
+            createdAt: job.created_at,
+            startedAt: job.started_at,
+            completedAt: job.completed_at,
+        };
     }
 
     async getJobMetrics(id: string): Promise<JobMetrics> {
@@ -273,13 +320,29 @@ class APIClient {
     }
 
     async startFineTune(config: FineTuneConfig): Promise<FineTuneResponse> {
-        const formData = new FormData();
-        formData.append('config', JSON.stringify(config));
+        // Convert camelCase frontend keys to snake_case for backend
+        const backendConfig = {
+            project_name: config.project_name,
+            base_model: config.base_model,
+            dataset_id: config.dataset_id,
+            epochs: config.epochs,
+            learning_rate: config.learning_rate,
+            rank: config.rank,
+            batch_size: config.batch_size,
+            use_pissa: config.use_pissa ?? true,
+        };
 
-        return this.request<FineTuneResponse>('/v1/fine-tune', {
+        const response = await this.request<any>('/v1/fine-tune', {
             method: 'POST',
-            body: formData,
+            body: JSON.stringify(backendConfig),
         });
+
+        // Convert snake_case response to camelCase for frontend
+        return {
+            jobId: response.job_id,
+            status: response.status,
+            message: response.message
+        };
     }
 
     async cancelJob(id: string): Promise<void> {
@@ -426,7 +489,7 @@ class APIClient {
     // =========================================================================
 
     async getSystemStatus(): Promise<SystemStatus> {
-        return this.request<SystemStatus>('/status');
+        return this.request<SystemStatus>('/v1/system/status');
     }
 
     async healthCheck(): Promise<HealthCheck> {

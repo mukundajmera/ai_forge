@@ -1,19 +1,6 @@
 import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  FolderOpen,
-  Activity,
-  Boxes,
-  BarChart3,
-  Sparkles,
-  Settings,
-  Zap,
-  HelpCircle,
-  Menu,
-  X,
-  Database
-} from 'lucide-react'
+import { \n  LayoutDashboard, \n  FolderOpen, \n  Activity, \n  Boxes, \n  BarChart3, \n  Sparkles, \n  Settings, \n  Zap, \n  HelpCircle, \n  Menu, \n  X, \n  Database\n } from 'lucide-react'
 
 interface NavItem {
   to: string;

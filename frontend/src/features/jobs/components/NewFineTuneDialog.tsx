@@ -140,9 +140,16 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
 
     const onSubmit = async (data: FineTuneFormData) => {
         try {
+            // Convert frontend model name to backend format
+            const baseModelMap: Record<string, string> = {
+                'Llama-3.2-3B': 'unsloth/Llama-3.2-3B-Instruct',
+                'Llama-3.2-7B': 'unsloth/Llama-3.2-7B-Instruct',
+                'Llama-3.2-13B': 'unsloth/Llama-3.2-13B-Instruct',
+            };
+
             const config = {
                 project_name: data.projectName,
-                base_model: data.baseModel,
+                base_model: baseModelMap[data.baseModel] || data.baseModel,
                 dataset_id: data.datasetId,
                 epochs: data.epochs || preset.epochs,
                 learning_rate: data.learningRate || preset.lr,

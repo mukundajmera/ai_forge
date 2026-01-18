@@ -489,19 +489,29 @@ class FineTuneTrainer:
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         
         # Quantization config
-        quant_config = BitsAndBytesConfig(
-            load_in_4bit=self.config.quantization.bits == 4,
-            bnb_4bit_quant_type=self.config.quantization.quant_type.value,
-            bnb_4bit_use_double_quant=self.config.quantization.double_quant,
-            bnb_4bit_compute_dtype=getattr(torch, self.config.quantization.compute_dtype),
-        )
+        quant_config = None
+        load_in_4bit = self.config.quantization.bits == 4
+        
+        # Check for MPS
+        if self.device == "mps" and load_in_4bit:
+            logger.warning("⚠️ Apple MPS detected: Disabling 4-bit quantization (bitsandbytes not supported). Using native precision.")
+            load_in_4bit = False
+        
+        if load_in_4bit:
+            quant_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type=self.config.quantization.quant_type.value,
+                bnb_4bit_use_double_quant=self.config.quantization.double_quant,
+                bnb_4bit_compute_dtype=getattr(torch, self.config.quantization.compute_dtype),
+            )
         
         # Load model
         model = AutoModelForCausalLM.from_pretrained(
             self.config.model.base_model,
             quantization_config=quant_config,
-            device_map="auto",
+            device_map="auto" if self.device != "mps" else self.device,
             trust_remote_code=self.config.model.trust_remote_code,
+            torch_dtype=torch.float16 if self.device == "mps" else "auto",
         )
         
         tokenizer = AutoTokenizer.from_pretrained(
@@ -510,7 +520,8 @@ class FineTuneTrainer:
         )
         
         # Prepare for k-bit training
-        model = prepare_model_for_kbit_training(model)
+        if load_in_4bit:
+            model = prepare_model_for_kbit_training(model)
         
         # LoRA config
         lora_config = LoraConfig(

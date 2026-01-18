@@ -8,7 +8,8 @@ import {
     FolderOpen,
     ChevronRight,
     Database,
-    Sparkles
+    Sparkles,
+    Layers
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
@@ -59,7 +60,7 @@ export function DataSourcesPage() {
                     <Button
                         intent="secondary"
                         icon={<Sparkles size={16} />}
-                        onClick={() => window.location.href = '/datasets'}
+                        onClick={() => window.location.href = '/datasets/generated'}
                     >
                         View Datasets
                     </Button>
@@ -165,6 +166,15 @@ export function DataSourcesPage() {
                                         </td>
                                         <td>
                                             <div className="table-actions">
+                                                {source.status === 'ready' && (
+                                                    <button
+                                                        className="btn btn-ghost btn-icon tooltip"
+                                                        data-tooltip="Generate Dataset"
+                                                        onClick={() => window.location.href = `/datasets/generated?source=${source.id}`}
+                                                    >
+                                                        <Layers size={14} style={{ color: 'var(--primary-400)' }} />
+                                                    </button>
+                                                )}
                                                 <button
                                                     className="btn btn-ghost btn-icon tooltip"
                                                     data-tooltip="Refresh"
