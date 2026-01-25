@@ -16,6 +16,10 @@ Example:
 from __future__ import annotations
 
 import logging
+import os
+
+# Enable MPS fallback to CPU for unsupported PyTorch operations on Apple Silicon
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -921,10 +925,43 @@ async def execute_fine_tune(job_id: str) -> None:
         
         # Load training data
         from datasets import load_dataset
-        dataset = load_dataset("json", data_files=job["data_path"])["train"]
+        raw_dataset = load_dataset("json", data_files=job["data_path"])["train"]
+        
+        # Tokenize dataset - convert instruction/output format to tokenized examples
+        def tokenize_function(examples):
+            # Format as instruction-following prompt
+            texts = []
+            for i in range(len(examples.get("instruction", []))):
+                instruction = examples.get("instruction", [""])[i] or ""
+                output = examples.get("output", [""])[i] or ""
+                # Alpaca-style format
+                text = f"### Instruction:\n{instruction}\n\n### Response:\n{output}"
+                texts.append(text)
+            
+            # Tokenize
+            tokenized = forge.tokenizer(
+                texts,
+                truncation=True,
+                max_length=forge.config.model.max_seq_length,
+                padding="max_length",
+                return_tensors=None,
+            )
+            tokenized["labels"] = tokenized["input_ids"].copy()
+            return tokenized
+        
+        dataset = raw_dataset.map(
+            tokenize_function,
+            batched=True,
+            remove_columns=raw_dataset.column_names,
+        )
+        
+        # Split into train/eval (90/10)
+        splits = dataset.train_test_split(test_size=0.1, seed=42)
+        train_ds = splits["train"]
+        eval_ds = splits["test"]
         
         # Train
-        results = forge.train(dataset)
+        results = forge.train(train_dataset=train_ds, eval_dataset=eval_ds)
         
         # Save
         forge.save_model(f"./output/{job_id}/final")

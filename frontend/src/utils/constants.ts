@@ -14,6 +14,7 @@ export const SUPPORTED_FILE_TYPES = {
     markdown: ['.md', '.mdx'],
     text: ['.txt'],
     pdf: ['.pdf'],
+    data: ['.json', '.jsonl', '.yaml', '.yml', '.csv'],
 };
 
 export const ALL_SUPPORTED_EXTENSIONS = [
@@ -21,6 +22,7 @@ export const ALL_SUPPORTED_EXTENSIONS = [
     ...SUPPORTED_FILE_TYPES.markdown,
     ...SUPPORTED_FILE_TYPES.text,
     ...SUPPORTED_FILE_TYPES.pdf,
+    ...SUPPORTED_FILE_TYPES.data,
 ];
 
 // File type icons (using emoji as fallback)
@@ -40,6 +42,11 @@ export const FILE_TYPE_ICONS: Record<string, string> = {
     '.mdx': '📄',
     '.txt': '📝',
     '.pdf': '📕',
+    '.json': '📦',
+    '.jsonl': '📦',
+    '.yaml': '⚙️',
+    '.yml': '⚙️',
+    '.csv': '📊',
 };
 
 // Language display names

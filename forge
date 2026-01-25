@@ -201,7 +201,8 @@ start_backend() {
     fi
     
     # Start with uvicorn - using conductor.service:app
-    python -m uvicorn conductor.service:app \
+    # Enable MPS fallback to CPU for unsupported PyTorch operations on Apple Silicon
+    PYTORCH_ENABLE_MPS_FALLBACK=1 python -m uvicorn conductor.service:app \
         --host 0.0.0.0 \
         --port $BACKEND_PORT \
         --reload \

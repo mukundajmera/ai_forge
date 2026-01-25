@@ -28,6 +28,10 @@ import gc
 import logging
 import math
 import os
+
+# Enable MPS fallback to CPU for unsupported PyTorch operations on Apple Silicon
+# This accounts for missing ops like aten::linalg_qr.out in torch 2.x on MPS
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -539,8 +543,10 @@ class FineTuneTrainer:
         model = get_peft_model(model, lora_config)
         
         # Apply PiSSA initialization if enabled
-        if self.config.pissa.init_method == InitMethod.PISSA:
-            self._apply_pissa_init(model)
+        # TEMPORARILY DISABLED to debug tensor mismatch issue
+        # if self.config.pissa.init_method == InitMethod.PISSA:
+        #     self._apply_pissa_init(model)
+        logger.info("PiSSA initialization skipped (standard LoRA used)")
         
         self.model = model
         self.tokenizer = tokenizer
@@ -566,12 +572,16 @@ class FineTuneTrainer:
                 A, B, W_res = self.pissa_init.compute_init(W)
                 
                 # Apply to LoRA layers
+                # LoRA computes: output = input @ lora_A.T @ lora_B.T
+                # So: lora_A.weight shape = (rank, in_features) -> This is B from PiSSA
+                #     lora_B.weight shape = (out_features, rank) -> This is A from PiSSA
                 for adapter_name in module.lora_A.keys():
                     lora_A = module.lora_A[adapter_name]
                     lora_B = module.lora_B[adapter_name]
                     
-                    # Transpose A for correct shape
-                    lora_A.weight.data = B.T.contiguous()
+                    # B has shape (rank, in_features) - matches lora_A expectation
+                    # A has shape (out_features, rank) - matches lora_B expectation
+                    lora_A.weight.data = B.contiguous()
                     lora_B.weight.data = A.contiguous()
                 
                 # Store residual in base layer if possible
@@ -635,10 +645,15 @@ class FineTuneTrainer:
         logger.info(f"Starting training for {epochs} epochs")
         
         # Training arguments
-        training_args = TrainingArguments(
-            **self.config.get_training_arguments(),
-            num_train_epochs=epochs,
-        )
+        training_args_dict = self.config.get_training_arguments()
+        training_args_dict["num_train_epochs"] = epochs  # Override if provided
+        
+        # Disable evaluation if no eval dataset provided
+        if eval_dataset is None:
+            logger.warning("No evaluation dataset provided. Disabling evaluation.")
+            training_args_dict["eval_strategy"] = "no"
+            
+        training_args = TrainingArguments(**training_args_dict)
         
         # Data collator
         data_collator = DataCollatorForLanguageModeling(
@@ -653,7 +668,7 @@ class FineTuneTrainer:
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             data_collator=data_collator,
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
         )
         
         # Run callbacks
@@ -713,7 +728,7 @@ class FineTuneTrainer:
             args=eval_args,
             eval_dataset=eval_dataset,
             data_collator=data_collator,
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
         )
         
         metrics = trainer.evaluate()
@@ -810,7 +825,7 @@ class FineTuneTrainer:
                 ref_model=None,  # Use implicit reference
                 args=dpo_config,
                 train_dataset=preference_dataset,
-                tokenizer=self.tokenizer,
+                processing_class=self.tokenizer,
             )
             
             result = trainer.train()

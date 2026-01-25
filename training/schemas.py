@@ -348,7 +348,7 @@ class FineTuneConfig(BaseModel):
             "num_train_epochs": self.training.num_train_epochs,
             "max_steps": self.training.max_steps,
             "seed": self.training.seed,
-            "evaluation_strategy": self.evaluation.strategy,
+            "eval_strategy": self.evaluation.strategy,
             "eval_steps": self.evaluation.eval_steps,
             "save_strategy": self.checkpoints.save_strategy,
             "save_steps": self.checkpoints.save_steps,
