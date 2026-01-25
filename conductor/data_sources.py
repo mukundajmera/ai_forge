@@ -36,11 +36,17 @@ router = APIRouter(tags=["Data Sources"])
 # In-memory storage (would be replaced with database in production)
 # =============================================================================
 
-_data_sources: dict[str, dict] = {}
-_parsed_files: dict[str, dict] = {}
+from conductor.persistence import storage
+
+# Transient job tracking (doesn't need persistence - jobs are ephemeral)
 _parsing_jobs: dict[str, dict] = {}
-_datasets: dict[str, dict] = {}
 _generation_jobs: dict[str, dict] = {}
+
+# Legacy compatibility - these are now accessed via storage but some parse tasks still use them
+_data_sources: dict[str, dict] = {}  # Alias, actual data in storage
+_parsed_files: dict[str, dict] = {}  # Alias, actual data in storage
+_datasets: dict[str, dict] = {}  # Alias, actual data in storage
+
 
 
 # =============================================================================
@@ -172,7 +178,8 @@ async def add_data_source(
         "error": None,
     }
     
-    _data_sources[source_id] = source
+    # _data_sources[source_id] = source
+    storage.set("data_sources", source_id, source)
     
     # Start background sync
     background_tasks.add_task(sync_data_source_task, source_id)
@@ -187,7 +194,7 @@ async def list_data_sources() -> list[DataSourceResponse]:
     Returns:
         List of all registered data sources
     """
-    return [DataSourceResponse(**s) for s in _data_sources.values()]
+    return [DataSourceResponse(**s) for s in storage.get_all("data_sources").values()]
 
 
 @router.get("/data-sources/{source_id}", response_model=DataSourceResponse)
@@ -200,10 +207,11 @@ async def get_data_source(source_id: str) -> DataSourceResponse:
     Returns:
         Data source details
     """
-    if source_id not in _data_sources:
+    source = storage.get("data_sources", source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Data source not found")
     
-    return DataSourceResponse(**_data_sources[source_id])
+    return DataSourceResponse(**source)
 
 
 @router.post("/data-sources/{source_id}/sync")
@@ -219,12 +227,14 @@ async def sync_data_source(
     Returns:
         Sync job information
     """
-    if source_id not in _data_sources:
+    source = storage.get("data_sources", source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Data source not found")
     
-    source = _data_sources[source_id]
+    # source = _data_sources[source_id]
     source["status"] = "syncing"
     source["lastSynced"] = datetime.now().isoformat()
+    storage.set("data_sources", source_id, source)
     
     background_tasks.add_task(sync_data_source_task, source_id)
     
@@ -241,19 +251,21 @@ async def delete_data_source(source_id: str) -> dict:
     Returns:
         Deletion confirmation
     """
-    if source_id not in _data_sources:
+    source = storage.get("data_sources", source_id)
+    if not source:
         raise HTTPException(status_code=404, detail="Data source not found")
     
     # Remove associated parsed files
+    parsed_files = storage.get_all("parsed_files")
     files_to_remove = [
-        fid for fid, f in _parsed_files.items() 
+        fid for fid, f in parsed_files.items() 
         if f.get("sourceId") == source_id
     ]
     for fid in files_to_remove:
-        del _parsed_files[fid]
+        storage.delete("parsed_files", fid)
     
     # Remove data source
-    del _data_sources[source_id]
+    storage.delete("data_sources", source_id)
     
     return {"message": "Data source deleted", "sourceId": source_id}
 
@@ -268,12 +280,12 @@ async def list_source_files(source_id: str) -> list[ParsedFileResponse]:
     Returns:
         List of parsed files with their status and metadata
     """
-    if source_id not in _data_sources:
+    if not storage.get("data_sources", source_id):
         raise HTTPException(status_code=404, detail="Data source not found")
     
     files = [
         ParsedFileResponse(**f) 
-        for f in _parsed_files.values() 
+        for f in storage.get_all("parsed_files").values() 
         if f.get("sourceId") == source_id
     ]
     
@@ -349,7 +361,8 @@ async def upload_files(
             "metadata": {},
         }
         
-        _parsed_files[file_id] = file_record
+        # _parsed_files[file_id] = file_record
+        storage.set("parsed_files", file_id, file_record)
         uploaded_files.append({"id": file_id, "filename": upload_file.filename})
     
     # Create data source record for uploads
@@ -367,7 +380,8 @@ async def upload_files(
         "config": DataSourceConfig().model_dump(),
         "error": None,
     }
-    _data_sources[source_id] = source
+    # _data_sources[source_id] = source
+    storage.set("data_sources", source_id, source)
     
     # Create parsing job
     _parsing_jobs[job_id] = {
@@ -407,10 +421,11 @@ async def get_parsing_status(job_id: str) -> ParsingJobResponse:
     job = _parsing_jobs[job_id]
     
     # Get file details
+    parsed_files = storage.get_all("parsed_files")
     files = [
-        ParsedFileResponse(**_parsed_files[fid])
+        ParsedFileResponse(**parsed_files[fid])
         for fid in job["files"]
-        if fid in _parsed_files
+        if fid in parsed_files
     ]
     
     return ParsingJobResponse(
@@ -434,10 +449,10 @@ async def get_file_preview(file_id: str) -> FilePreviewResponse:
     Returns:
         File preview with metadata, content, and chunks
     """
-    if file_id not in _parsed_files:
+    if not storage.get("parsed_files", file_id):
         raise HTTPException(status_code=404, detail="File not found")
     
-    file_record = _parsed_files[file_id]
+    file_record = storage.get("parsed_files", file_id)
     
     # Read file content
     try:
@@ -525,7 +540,7 @@ async def generate_dataset(
     """
     # Validate source IDs
     for source_id in request.sourceIds:
-        if source_id not in _data_sources:
+        if not storage.get("data_sources", source_id):
             raise HTTPException(
                 status_code=400, 
                 detail=f"Data source not found: {source_id}"
@@ -554,7 +569,8 @@ async def generate_dataset(
         "error": None,
         "version": 1,
     }
-    _datasets[dataset_id] = dataset
+    # _datasets[dataset_id] = dataset
+    storage.set("datasets", dataset_id, dataset)
     
     # Create generation job
     _generation_jobs[job_id] = {
@@ -601,7 +617,7 @@ async def list_datasets() -> list[DatasetResponse]:
     Returns:
         List of all generated datasets
     """
-    return [DatasetResponse(**d) for d in _datasets.values()]
+    return [DatasetResponse(**d) for d in storage.get_all("datasets").values()]
 
 
 @router.get("/datasets/{dataset_id}", response_model=DatasetResponse)
@@ -614,10 +630,11 @@ async def get_dataset(dataset_id: str) -> DatasetResponse:
     Returns:
         Dataset details
     """
-    if dataset_id not in _datasets:
+    dataset = storage.get("datasets", dataset_id)
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    return DatasetResponse(**_datasets[dataset_id])
+    return DatasetResponse(**dataset)
 
 
 @router.get("/datasets/{dataset_id}/preview", response_model=DatasetPreviewResponse)
@@ -630,10 +647,11 @@ async def get_dataset_preview(dataset_id: str) -> DatasetPreviewResponse:
     Returns:
         Dataset with sample examples
     """
-    if dataset_id not in _datasets:
+    dataset = storage.get("datasets", dataset_id)
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    dataset = _datasets[dataset_id]
+    # dataset = _datasets[dataset_id]
     
     # Get sample examples (would come from actual dataset in production)
     examples = dataset.get("examples", [])[:5]
@@ -664,10 +682,11 @@ async def download_dataset(dataset_id: str) -> FileResponse:
     Returns:
         JSON file download
     """
-    if dataset_id not in _datasets:
+    dataset = storage.get("datasets", dataset_id)
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    dataset = _datasets[dataset_id]
+    # dataset = _datasets[dataset_id]
     
     if dataset["status"] != "ready":
         raise HTTPException(status_code=400, detail="Dataset not ready")
@@ -692,10 +711,11 @@ async def delete_dataset(dataset_id: str) -> dict:
     Returns:
         Deletion confirmation
     """
-    if dataset_id not in _datasets:
+    dataset = storage.get("datasets", dataset_id)
+    if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    dataset = _datasets[dataset_id]
+    # dataset = _datasets[dataset_id]
     
     # Remove file if exists
     if dataset.get("filePath"):
@@ -704,7 +724,8 @@ async def delete_dataset(dataset_id: str) -> dict:
         except Exception:
             pass
     
-    del _datasets[dataset_id]
+    # del _datasets[dataset_id]
+    storage.delete("datasets", dataset_id)
     
     return {"message": "Dataset deleted", "datasetId": dataset_id}
 
@@ -718,7 +739,8 @@ async def sync_data_source_task(source_id: str) -> None:
     
     Clones git repos or scans local folders, extracts files, and triggers parsing.
     """
-    source = _data_sources.get(source_id)
+    # source = _data_sources.get(source_id)
+    source = storage.get("data_sources", source_id)
     if not source:
         return
     
@@ -794,7 +816,8 @@ async def sync_data_source_task(source_id: str) -> None:
                     "metadata": {},
                 }
                 
-                _parsed_files[file_id] = file_record
+                # _parsed_files[file_id] = file_record
+                storage.set("parsed_files", file_id, file_record)
                 files_to_process.append(file_id)
             
             source["fileCount"] = len(files_to_process)
@@ -837,7 +860,7 @@ async def parse_files_task(job_id: str, source_id: str) -> None:
     Uses the data_pipeline miner to extract code blocks.
     """
     job = _parsing_jobs.get(job_id)
-    source = _data_sources.get(source_id)
+    source = storage.get("data_sources", source_id)
     
     if not job or not source:
         return
@@ -847,10 +870,9 @@ async def parse_files_task(job_id: str, source_id: str) -> None:
         total_files = len(file_ids)
         
         for i, file_id in enumerate(file_ids):
-            if file_id not in _parsed_files:
+            file_record = storage.get("parsed_files", file_id)
+            if not file_record:
                 continue
-            
-            file_record = _parsed_files[file_id]
             file_record["parseStatus"] = "parsing"
             
             # Update progress
@@ -932,6 +954,9 @@ async def parse_files_task(job_id: str, source_id: str) -> None:
                 file_record["parseStatus"] = "failed"
                 file_record["error"] = str(e)
             
+            # Persist file record changes
+            storage.set("parsed_files", file_id, file_record)
+            
             # Small delay between files
             await asyncio.sleep(0.1)
         
@@ -940,8 +965,9 @@ async def parse_files_task(job_id: str, source_id: str) -> None:
         job["progress"] = 100
         job["completedAt"] = datetime.now().isoformat()
         
-        # Update source status
+        # Update source status and persist
         source["status"] = "ready"
+        storage.set("data_sources", source_id, source)
         
     except Exception as e:
         logger.error(f"Parsing job {job_id} failed: {e}")
@@ -949,6 +975,7 @@ async def parse_files_task(job_id: str, source_id: str) -> None:
         job["error"] = str(e)
         source["status"] = "error"
         source["error"] = str(e)
+        storage.set("data_sources", source_id, source)
 
 
 async def generate_dataset_task(job_id: str, dataset_id: str) -> None:
@@ -957,7 +984,7 @@ async def generate_dataset_task(job_id: str, dataset_id: str) -> None:
     Uses the data_pipeline raft_generator to create training examples.
     """
     job = _generation_jobs.get(job_id)
-    dataset = _datasets.get(dataset_id)
+    dataset = storage.get("datasets", dataset_id)
     
     if not job or not dataset:
         return
@@ -967,9 +994,10 @@ async def generate_dataset_task(job_id: str, dataset_id: str) -> None:
         
         # Collect all parsed files from sources
         all_files = []
+        parsed_files = storage.get_all("parsed_files")
         for source_id in source_ids:
             source_files = [
-                f for f in _parsed_files.values() 
+                f for f in parsed_files.values() 
                 if f.get("sourceId") == source_id and f.get("parseStatus") == "success"
             ]
             all_files.extend(source_files)

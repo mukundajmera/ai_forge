@@ -450,6 +450,26 @@ async def get_job_status(job_id: str) -> JobStatus:
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = state.jobs[job_id]
+    
+    # Check for progress file from worker process
+    progress_file = Path(f"./output/{job_id}/progress.json")
+    if progress_file.exists():
+        try:
+            import json
+            with open(progress_file) as f:
+                progress_data = json.load(f)
+            # Merge worker progress into job state
+            if "status" in progress_data:
+                job["status"] = progress_data["status"]
+            if "progress" in progress_data:
+                job["progress"] = progress_data["progress"]
+            if "error" in progress_data:
+                job["error"] = progress_data["error"]
+            if "loss" in progress_data:
+                job["loss"] = progress_data["loss"]
+        except Exception as e:
+            logger.warning(f"Failed to read progress file for {job_id}: {e}")
+    
     return JobStatus(**{
         k: v for k, v in job.items()
         if k in JobStatus.model_fields
@@ -490,6 +510,60 @@ async def cancel_job(job_id: str) -> dict[str, str]:
     job["updated_at"] = datetime.now().isoformat()
     
     return {"message": f"Job {job_id} cancelled"}
+
+
+# --------------------------------------------------------------------------
+# Job Logs & Metrics Endpoints
+# --------------------------------------------------------------------------
+
+@app.get("/jobs/{job_id}/logs", tags=["Fine-Tuning"])
+async def get_job_logs(job_id: str) -> dict:
+    """Get training logs for a job.
+    
+    Args:
+        job_id: Job identifier.
+        
+    Returns:
+        Training logs.
+    """
+    if job_id not in state.jobs:
+        # Return empty logs instead of 404 to prevent frontend errors
+        return {"logs": [], "lastUpdated": datetime.now().isoformat()}
+    
+    job = state.jobs[job_id]
+    logs = job.get("logs", [])
+    
+    return {
+        "logs": logs,
+        "lastUpdated": job.get("updated_at", datetime.now().isoformat())
+    }
+
+
+@app.get("/jobs/{job_id}/metrics", tags=["Fine-Tuning"])
+async def get_job_metrics(job_id: str) -> dict:
+    """Get training metrics for a job.
+    
+    Args:
+        job_id: Job identifier.
+        
+    Returns:
+        Training metrics (loss curve data).
+    """
+    if job_id not in state.jobs:
+        # Return empty metrics instead of 404 to prevent frontend errors
+        return {"steps": [], "losses": [], "learningRates": []}
+    
+    job = state.jobs[job_id]
+    metrics = job.get("metrics", {})
+    
+    return {
+        "steps": metrics.get("steps", []),
+        "losses": metrics.get("losses", []),
+        "learningRates": metrics.get("learning_rates", []),
+        "currentStep": job.get("current_step", 0),
+        "currentEpoch": job.get("current_epoch", 0),
+        "loss": job.get("loss")
+    }
 
 
 # --------------------------------------------------------------------------
@@ -680,6 +754,7 @@ class DeployResponse(BaseModel):
 
 
 @app.post("/deploy/{job_id}", response_model=DeployResponse, tags=["Deploy"])
+@app.post("/models/{job_id}/deploy", response_model=DeployResponse, tags=["Deploy"])
 async def deploy_model(job_id: str, request: DeployRequest = None) -> DeployResponse:
     """Deploy a trained model to Ollama.
     
@@ -718,7 +793,29 @@ async def deploy_model(job_id: str, request: DeployRequest = None) -> DeployResp
             )
         
         # Export to GGUF
-        from judge.exporter import GGUFExporter, ExportConfig
+        from judge.exporter import GGUFExporter, ExportConfig, merge_adapters_to_base
+        
+        # Check if we need to merge adapters
+        export_source = output_dir
+        if (output_dir / "adapter_config.json").exists():
+            logger.info("Detected adapter, merging to base model...")
+            base_model = job["config"].get("base_model")
+            if not base_model:
+                 logger.warning("No base model found in job config, attempting export without merge")
+            else:
+                try:
+                    merged_dir = output_dir / "merged"
+                    # Only merge if not already merged
+                    if not (merged_dir / "config.json").exists():
+                         merge_adapters_to_base(
+                            base_model_path=base_model,
+                            adapter_path=output_dir,
+                            output_path=merged_dir
+                         )
+                    export_source = merged_dir
+                except Exception as e:
+                    logger.error(f"Failed to merge adapters: {e}")
+                    # Fallback to trying to export directly (might fail)
         
         quantization = request.quantization if request else "q4_k_m"
         export_config = ExportConfig(
@@ -727,7 +824,7 @@ async def deploy_model(job_id: str, request: DeployRequest = None) -> DeployResp
             model_name=model_name,
         )
         
-        exporter = GGUFExporter(output_dir, export_config)
+        exporter = GGUFExporter(export_source, export_config)
         result = exporter.export()
         
         if not result.success:
@@ -852,12 +949,15 @@ async def validate_model(job_id: str) -> ValidateResponse:
 # Background Tasks
 # --------------------------------------------------------------------------
 
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
+from conductor.training_worker import run_training_job
+
+# Global executor for heavy tasks
+process_pool = ProcessPoolExecutor(max_workers=1)
+
 async def execute_fine_tune(job_id: str) -> None:
-    """Execute fine-tuning job in background.
-    
-    Args:
-        job_id: Job identifier.
-    """
+    """Execute fine-tuning job in background using process pool."""
     job = state.jobs.get(job_id)
     if not job:
         return
@@ -866,110 +966,24 @@ async def execute_fine_tune(job_id: str) -> None:
         job["status"] = "training"
         job["updated_at"] = datetime.now().isoformat()
         
-        # Import training components
-        import sys
-        
-        # Add project root parent to path to allow 'ai_forge' imports
-        # Service is in ai_forge/conductor/service.py -> parent.parent.parent = pocs/
-        root_parent = str(Path(__file__).resolve().parent.parent.parent)
-        if root_parent not in sys.path:
-            sys.path.insert(0, root_parent)
-
-        try:
-            from ai_forge.training import FineTuneTrainer, FineTuneConfig
-            from ai_forge.training.schemas import (
-                ModelConfig, 
-                TrainingConfig, 
-                PiSSAConfig, 
-                LoggingConfig,
-                InitMethod
-            )
-        except ImportError:
-            # Fallback for when running from root without package install
-            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-            from training import FineTuneTrainer, FineTuneConfig
-            from training.schemas import (
-                ModelConfig, 
-                TrainingConfig, 
-                PiSSAConfig, 
-                LoggingConfig,
-                InitMethod
-            )
-        
-        # Determine initialization method
-        init_method = InitMethod.PISSA if job["config"].get("use_pissa", True) else InitMethod.GAUSSIAN
-
-        # Construct configuration
-        config = FineTuneConfig(
-            model=ModelConfig(
-                base_model=job["config"]["base_model"],
-            ),
-            training=TrainingConfig(
-                num_train_epochs=job["config"]["epochs"],
-                learning_rate=job["config"]["learning_rate"],
-                per_device_train_batch_size=job["config"]["batch_size"],
-            ),
-            pissa=PiSSAConfig(
-                rank=job["config"]["rank"],
-                init_method=init_method,
-            ),
-            logging=LoggingConfig(
-                output_dir=f"./output/{job_id}",
-            ),
+        # Run in separate process to avoid blocking main loop
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            process_pool,
+            run_training_job,
+            job_id,
+            job["config"],
+            job["data_path"],
+            "./output"
         )
         
-        forge = FineTuneTrainer(config)
-        
-        # Load model
-        forge.load_model()
-        
-        # Load training data
-        from datasets import load_dataset
-        raw_dataset = load_dataset("json", data_files=job["data_path"])["train"]
-        
-        # Tokenize dataset - convert instruction/output format to tokenized examples
-        def tokenize_function(examples):
-            # Format as instruction-following prompt
-            texts = []
-            for i in range(len(examples.get("instruction", []))):
-                instruction = examples.get("instruction", [""])[i] or ""
-                output = examples.get("output", [""])[i] or ""
-                # Alpaca-style format
-                text = f"### Instruction:\n{instruction}\n\n### Response:\n{output}"
-                texts.append(text)
+        if result["success"]:
+            job["status"] = "completed"
+            job["progress"] = 100.0
+            job["loss"] = result.get("loss", 0.0)
+        else:
+            raise Exception(result.get("error", "Unknown error"))
             
-            # Tokenize
-            tokenized = forge.tokenizer(
-                texts,
-                truncation=True,
-                max_length=forge.config.model.max_seq_length,
-                padding="max_length",
-                return_tensors=None,
-            )
-            tokenized["labels"] = tokenized["input_ids"].copy()
-            return tokenized
-        
-        dataset = raw_dataset.map(
-            tokenize_function,
-            batched=True,
-            remove_columns=raw_dataset.column_names,
-        )
-        
-        # Split into train/eval (90/10)
-        splits = dataset.train_test_split(test_size=0.1, seed=42)
-        train_ds = splits["train"]
-        eval_ds = splits["test"]
-        
-        # Train
-        results = forge.train(train_dataset=train_ds, eval_dataset=eval_ds)
-        
-        # Save
-        forge.save_model(f"./output/{job_id}/final")
-        
-        job["status"] = "completed"
-        job["progress"] = 100.0
-        job["loss"] = results.get("train_loss", 0.0)
-        
     except Exception as e:
         logger.error(f"Fine-tuning failed for {job_id}: {e}")
         job["status"] = "failed"

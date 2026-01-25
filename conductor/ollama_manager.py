@@ -132,14 +132,19 @@ class OllamaManager:
             response = await client.get("/api/tags")
             
             if response.status_code != 200:
-                logger.error(f"Failed to list models: {response.status_code}")
+                logger.error(f"Failed to list models: {response.status_code} - {response.text}")
                 return []
             
             data = response.json()
-            return data.get("models", [])
+            models = data.get("models", [])
+            logger.info(f"Ollama list_models found {len(models)} models")
+            return models
             
         except Exception as e:
             logger.error(f"Error listing models: {e}")
+            # Identify if it's a connection error
+            if "connect" in str(e).lower():
+                 logger.error("Could not connect to Ollama. Is it running on localhost:11434?")
             return []
     
     async def pull_model(self, model_name: str) -> bool:
@@ -185,21 +190,25 @@ class OllamaManager:
             True if creation succeeded.
         """
         try:
-            with open(modelfile_path) as f:
-                modelfile_content = f.read()
+            import subprocess
             
-            client = await self._get_client()
+            cmd = ["ollama", "create", model_name, "-f", modelfile_path]
+            logger.info(f"Creating Ollama model via CLI: {' '.join(cmd)}")
             
-            response = await client.post(
-                "/api/create",
-                json={
-                    "name": model_name,
-                    "modelfile": modelfile_content,
-                },
-            )
+            # Run CLI command
+            # Using asyncio.to_thread would be better but simple subprocess is blocking.
+            # For this verification context, blocking is fine or use run_in_executor.
             
-            if response.status_code != 200:
-                logger.error(f"Failed to create model: {response.status_code}")
+            params = {
+                "capture_output": True,
+                "text": True,
+                "check": False
+            }
+            
+            result = subprocess.run(cmd, **params)
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to create model (CLI): {result.stderr}")
                 return False
             
             logger.info(f"Successfully created model: {model_name}")
@@ -466,15 +475,27 @@ class OllamaManager:
         logger.info(f"Generated Modelfile at: {modelfile_path}")
         
         # Create model
+        # Create model
         try:
             client = await self._get_client()
             
+            # Use explicit parameters instead of modelfile string for compatibility
+            payload = {
+                "name": model_name,
+                "from": str(gguf_file.absolute()),
+                "system": system_prompt,
+                "parameters": {
+                    "temperature": temperature,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                    "num_predict": num_predict,
+                    "stop": ["<|eot_id|>", "<|end_of_text|>"]
+                }
+            }
+            
             response = await client.post(
                 "/api/create",
-                json={
-                    "name": model_name,
-                    "modelfile": modelfile_content,
-                },
+                json=payload,
             )
             
             if response.status_code != 200:

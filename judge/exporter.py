@@ -301,6 +301,7 @@ class GGUFExporter:
         search_paths = [
             Path.home() / "llama.cpp" / "convert.py",
             Path.home() / "llama.cpp" / "convert-hf-to-gguf.py",
+            Path("./scripts/convert_hf_to_gguf.py").absolute(),
             Path("/usr/local/bin/llama-cpp-convert"),
         ]
         
@@ -326,8 +327,10 @@ class GGUFExporter:
         Returns:
             True if conversion succeeded.
         """
+        import sys
+        
         cmd = [
-            "python",
+            sys.executable,
             str(script_path),
             str(self.model_path),
             "--outfile", str(output_path),
@@ -392,7 +395,7 @@ class GGUFExporter:
             f"Provide accurate, helpful responses based on your training."
         )
         
-        content = f'''FROM {gguf_path}
+        content = f'''FROM {gguf_path.resolve()}
 
 SYSTEM """
 {system_prompt}

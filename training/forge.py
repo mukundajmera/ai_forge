@@ -526,6 +526,13 @@ class FineTuneTrainer:
         # Prepare for k-bit training
         if load_in_4bit:
             model = prepare_model_for_kbit_training(model)
+        else:
+            # For MPS/CPU without quantization, we still need to enable input gradients
+            # for LoRA training to work. This is normally done by prepare_model_for_kbit_training.
+            def make_inputs_require_grad(module, input, output):
+                output.requires_grad_(True)
+            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+            logger.info("Enabled input gradients for non-quantized training")
         
         # LoRA config
         lora_config = LoraConfig(

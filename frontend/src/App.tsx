@@ -21,6 +21,7 @@ function App() {
                     <Route path="/jobs/new" element={<JobsListPage isCreating />} />
                     <Route path="/jobs/:jobId" element={<JobDetailPage />} />
                     <Route path="/models" element={<ModelsPage />} />
+                    <Route path="/models/deploy" element={<ModelsPage showDeploy />} />
                     <Route path="/monitoring" element={<MonitoringPage />} />
                     <Route path="/missions" element={<MissionsPage />} />
                     <Route path="/missions/:missionId" element={<MissionDetailPage />} />

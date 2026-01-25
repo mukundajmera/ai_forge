@@ -1,0 +1,2 @@
+FROM /Users/mukundajmera/pocs/ai_forge/output/test_deploy_job/final/export/test-gpt2-1769339415-q8_0.gguf
+SYSTEM "You are a CLI test."
