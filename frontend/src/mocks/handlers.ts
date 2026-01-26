@@ -13,11 +13,11 @@ const API_BASE = 'http://localhost:8000';
 export const mockJobs = [
     {
         id: 'job-1',
-        projectName: 'myproject',
+        projectName: 'my-project',
         status: 'running',
         baseModel: 'Llama-3.2-3B',
         method: 'pissa',
-        progress: 45,
+        progress: 78,
         metrics: {
             loss: 1.234,
             currentEpoch: 2,
@@ -36,7 +36,7 @@ export const mockJobs = [
     },
     {
         id: 'job-2',
-        projectName: 'completed-project',
+        projectName: 'api-helper',
         status: 'completed',
         baseModel: 'Qwen2.5-Coder-7B',
         method: 'pissa',
@@ -154,6 +154,30 @@ export const handlers = [
     http.get(`${API_BASE}/jobs`, async () => {
         await delay(100);
         return HttpResponse.json(mockJobs);
+    }),
+
+    // GET /v1/fine-tune - Returns list of training jobs (mapped to backend format)
+    http.get(`${API_BASE}/v1/fine-tune`, async () => {
+        await delay(100);
+        // Map to backend format that apiClient.getJobs expects
+        return HttpResponse.json(mockJobs.map(job => ({
+            job_id: job.id,
+            status: job.status,
+            progress: job.progress,
+            current_epoch: job.metrics?.currentEpoch,
+            current_step: job.metrics?.currentStep,
+            config: {
+                project_name: job.projectName,
+                base_model: job.baseModel,
+                dataset_id: job.datasetName,
+                epochs: job.config?.epochs,
+                learning_rate: job.config?.learningRate,
+                rank: job.config?.rank,
+                batch_size: job.config?.batchSize,
+            },
+            started_at: job.startedAt,
+            completed_at: job.completedAt,
+        })));
     }),
 
     http.get(`${API_BASE}/jobs/:jobId`, async ({ params }) => {

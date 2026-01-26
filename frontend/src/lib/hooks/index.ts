@@ -76,25 +76,19 @@ export function useSystemStatus() {
 // Mission Hooks
 // =============================================================================
 
-import type { Mission } from '@/lib/types/mission.types';
+import type { Mission, MissionsResponse } from '@/lib/types/mission.types';
 
-export function useMissions() {
+export function useMissions(filter?: { status?: string; type?: string }) {
     return useQuery({
-        queryKey: ['missions'],
-        queryFn: async () => {
-            // Return mock data for now - missions API may not be implemented
-            return [] as Mission[];
-        },
+        queryKey: ['missions', filter],
+        queryFn: () => apiClient.getMissions(filter) as Promise<MissionsResponse>,
     });
 }
 
 export function useMission(missionId: string | undefined) {
     return useQuery({
         queryKey: ['missions', missionId],
-        queryFn: async () => {
-            // Return mock data for now
-            return null as Mission | null;
-        },
+        queryFn: () => apiClient.getMission(missionId!) as Promise<Mission>,
         enabled: !!missionId,
     });
 }
@@ -102,10 +96,7 @@ export function useMission(missionId: string | undefined) {
 export function useApproveMission() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (_missionId: string) => {
-            // Mock implementation
-            return { success: true };
-        },
+        mutationFn: (missionId: string) => apiClient.approveMission(missionId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['missions'] });
         },
@@ -115,10 +106,8 @@ export function useApproveMission() {
 export function useRejectMission() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (_missionId: string) => {
-            // Mock implementation
-            return { success: true };
-        },
+        mutationFn: ({ missionId, reason }: { missionId: string; reason?: string }) => 
+            apiClient.rejectMission(missionId, reason),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['missions'] });
         },

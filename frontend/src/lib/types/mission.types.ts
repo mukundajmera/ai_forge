@@ -34,6 +34,12 @@ export interface MissionApproval {
     reason?: string;
 }
 
+export interface MissionReasoning {
+    trigger?: string;
+    analysis?: string;
+    expectedOutcome?: string;
+}
+
 export interface Mission {
     id: string;
     title: string;
@@ -41,8 +47,8 @@ export interface Mission {
     status: MissionStatus;
     type: MissionType;
     priority?: MissionPriority;
-    confidence: number; // 0-1
-    reasoning?: string;
+    confidence: number; // 0-1 or 0-100
+    reasoning?: MissionReasoning | string;
     createdAt: string;
     completedAt?: string;
     relatedJobIds: string[];
@@ -56,6 +62,7 @@ export interface Mission {
 export interface MissionsResponse {
     missions: Mission[];
     total: number;
-    page: number;
-    pageSize: number;
+    page?: number;
+    pageSize?: number;
+    pending?: number;
 }
