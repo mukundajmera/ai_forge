@@ -171,6 +171,7 @@ export function useStartJob() {
 
     return useMutation({
         mutationFn: (request: NewJobRequest) => {
+            // API expects snake_case properties
             const config: FineTuneConfig = {
                 project_name: request.projectName,
                 base_model: request.baseModel,
@@ -180,13 +181,6 @@ export function useStartJob() {
                 rank: request.rank,
                 batch_size: request.batchSize,
                 use_pissa: request.method === 'pissa',
-                // Camel case aliases
-                projectName: request.projectName,
-                baseModel: request.baseModel,
-                datasetId: request.datasetId,
-                learningRate: request.learningRate,
-                batchSize: request.batchSize,
-                method: request.method,
             }
             return apiClient.startFineTune(config)
         },

@@ -3,12 +3,4 @@
 // =============================================================================
 
 export * from '@/types';
-export type {
-    Mission,
-    MissionStatus,
-    MissionType,
-    Artifact,
-    ArtifactType,
-} from '@/types';
-
-export type MissionPriority = 'low' | 'medium' | 'high';
+export type { MissionPriority } from './mission.types';
