@@ -12,7 +12,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -55,7 +55,7 @@ logs/
 
 # Model outputs
 output/
-models/
+/models/
 *.gguf
 *.safetensors
 *.bin
@@ -64,9 +64,6 @@ models/
 
 # Data
 data/
-*.json
-!.env.example
-!pyproject.toml
 
 # Cache
 .cache/
