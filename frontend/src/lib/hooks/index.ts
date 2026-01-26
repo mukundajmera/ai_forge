@@ -96,7 +96,8 @@ export function useMission(missionId: string | undefined) {
 export function useApproveMission() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: (missionId: string) => apiClient.approveMission(missionId),
+        mutationFn: ({ id, comment }: { id: string; comment?: string }) => 
+            apiClient.approveMission(id, comment),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['missions'] });
         },
@@ -106,8 +107,8 @@ export function useApproveMission() {
 export function useRejectMission() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ missionId, reason }: { missionId: string; reason?: string }) => 
-            apiClient.rejectMission(missionId, reason),
+        mutationFn: ({ id, reason }: { id: string; reason: string }) => 
+            apiClient.rejectMission(id, reason),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['missions'] });
         },
