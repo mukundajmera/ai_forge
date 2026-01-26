@@ -42,7 +42,7 @@ class ExportConfig:
         use_llama_cpp: Whether to use llama.cpp for conversion.
     """
     
-    quantization: QuantizationType = "q4_k_m"
+    quantization: QuantizationType = "q8_0"
     output_dir: str = "./export"
     model_name: str = "custom_model"
     description: str = "Fine-tuned model with AI Forge"

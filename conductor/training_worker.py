@@ -101,6 +101,15 @@ def run_training_job(job_id: str, config_dict: dict, data_path: str, output_base
         # 5. Initialize Trainer
         update_progress("loading_model", 20.0)
         logger.info(f"Worker {os.getpid()}: Initializing trainer for {job_id}")
+        
+        # Check for checkpoint path (progressive learning)
+        checkpoint_path = config_dict.get("checkpoint_path")
+        if checkpoint_path and Path(checkpoint_path).exists():
+            logger.info(f"Progressive learning: Loading from checkpoint {checkpoint_path}")
+            update_progress("loading_checkpoint", 15.0)
+            # Load from checkpoint instead of base model
+            ft_config.model.base_model = checkpoint_path
+        
         forge = FineTuneTrainer(ft_config)
         forge.load_model()
         

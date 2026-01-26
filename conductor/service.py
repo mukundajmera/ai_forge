@@ -29,6 +29,11 @@ from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+try:
+    from ai_forge.conductor.persistence import storage
+except ImportError:
+    from conductor.persistence import storage
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +58,7 @@ class FineTuneRequest(BaseModel):
     project_name: str
     base_model: str = "unsloth/Llama-3.2-3B-Instruct"
     dataset_id: Optional[str] = None
+    checkpoint_path: Optional[str] = None  # Path to previous model checkpoint for progressive learning
     epochs: int = 3
     learning_rate: float = 2e-4
     rank: int = 64
@@ -214,14 +220,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize components
     try:
         try:
-            from ai_forge.conductor.ollama_manager import OllamaManager
             from ai_forge.conductor.job_queue import JobQueue
+            from ai_forge.conductor.persistence import storage
         except ImportError:
             from conductor.ollama_manager import OllamaManager
             from conductor.job_queue import JobQueue
+            from conductor.persistence import storage
         
         state.ollama_manager = OllamaManager()
         state.job_queue = JobQueue()
+        
+        # Load jobs from storage
+        stored_jobs = storage.get_all("jobs")
+        if stored_jobs:
+            state.jobs = stored_jobs
+            logger.info(f"Loaded {len(state.jobs)} jobs from storage")
         
         logger.info("Service initialized successfully")
     except Exception as e:
@@ -426,6 +439,9 @@ async def start_fine_tune(
         "updated_at": now,
     }
     
+    # Persist job
+    storage.set("jobs", job_id, state.jobs[job_id])
+    
     # Queue background task
     background_tasks.add_task(execute_fine_tune, job_id)
     
@@ -467,6 +483,9 @@ async def get_job_status(job_id: str) -> JobStatus:
                 job["error"] = progress_data["error"]
             if "loss" in progress_data:
                 job["loss"] = progress_data["loss"]
+            
+            # Persist updates
+            storage.set("jobs", job_id, job)
         except Exception as e:
             logger.warning(f"Failed to read progress file for {job_id}: {e}")
     
@@ -736,7 +755,7 @@ class DeployRequest(BaseModel):
     
     model_name: Optional[str] = None
     system_prompt: Optional[str] = None
-    quantization: str = "q4_k_m"
+    quantization: str = "q8_0"  # Valid options: f32, f16, bf16, q8_0, tq1_0, tq2_0, auto
 
 
 class DeployResponse(BaseModel):
@@ -800,6 +819,8 @@ async def deploy_model(job_id: str, request: DeployRequest = None) -> DeployResp
         if (output_dir / "adapter_config.json").exists():
             logger.info("Detected adapter, merging to base model...")
             base_model = job["config"].get("base_model")
+            logger.info(f"Base model from config: {base_model}")
+            
             if not base_model:
                  logger.warning("No base model found in job config, attempting export without merge")
             else:
@@ -807,14 +828,19 @@ async def deploy_model(job_id: str, request: DeployRequest = None) -> DeployResp
                     merged_dir = output_dir / "merged"
                     # Only merge if not already merged
                     if not (merged_dir / "config.json").exists():
+                         logger.info(f"Merging to {merged_dir}...")
                          merge_adapters_to_base(
                             base_model_path=base_model,
                             adapter_path=output_dir,
                             output_path=merged_dir
                          )
+                    else:
+                        logger.info(f"Merged model already exists at {merged_dir}")
+                        
                     export_source = merged_dir
+                    logger.info(f"Set export source to merged dir: {export_source}")
                 except Exception as e:
-                    logger.error(f"Failed to merge adapters: {e}")
+                    logger.error(f"Merge failed: {e}")
                     # Fallback to trying to export directly (might fail)
         
         quantization = request.quantization if request else "q4_k_m"
