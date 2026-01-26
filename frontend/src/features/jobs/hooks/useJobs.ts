@@ -28,13 +28,15 @@ export interface TrainingJob {
     batchSize: number
     datasetId: string
     datasetName?: string
-    startedAt: string
+    createdAt: string
+    startedAt?: string
     completedAt?: string
-    duration?: string
+    duration?: string | number
     eta?: string
-    error?: string
+    error?: string | { message: string; type: string }
     outputDir?: string
     checkpoints?: string[]
+    method?: 'pissa' | 'lora' | 'qlora'
 }
 
 export interface NewJobRequest {
@@ -170,12 +172,19 @@ export function useStartJob() {
     return useMutation({
         mutationFn: (request: NewJobRequest) => {
             const config: FineTuneConfig = {
+                project_name: request.projectName,
+                base_model: request.baseModel,
+                dataset_id: request.datasetId,
+                epochs: request.epochs,
+                learning_rate: request.learningRate,
+                rank: request.rank,
+                batch_size: request.batchSize,
+                use_pissa: request.method === 'pissa',
+                // Camel case aliases
                 projectName: request.projectName,
                 baseModel: request.baseModel,
                 datasetId: request.datasetId,
-                epochs: request.epochs,
                 learningRate: request.learningRate,
-                rank: request.rank,
                 batchSize: request.batchSize,
                 method: request.method,
             }
@@ -237,14 +246,14 @@ export function useRerunJob() {
             const originalJob = await apiClient.getJob(jobId) as TrainingJob
 
             const config: FineTuneConfig = {
-                projectName: overrides?.projectName || originalJob.projectName,
-                baseModel: overrides?.baseModel || originalJob.baseModel,
-                datasetId: overrides?.datasetId || originalJob.datasetId,
+                project_name: overrides?.projectName || originalJob.projectName,
+                base_model: overrides?.baseModel || originalJob.baseModel,
+                dataset_id: overrides?.datasetId || originalJob.datasetId,
                 epochs: overrides?.epochs || originalJob.epochs,
-                learningRate: overrides?.learningRate || originalJob.learningRate,
+                learning_rate: overrides?.learningRate || originalJob.learningRate,
                 rank: overrides?.rank || originalJob.rank,
-                batchSize: overrides?.batchSize || originalJob.batchSize,
-                method: overrides?.method || 'pissa',
+                batch_size: overrides?.batchSize || originalJob.batchSize,
+                use_pissa: overrides?.method === 'pissa' || true,
             }
 
             return apiClient.startFineTune(config)

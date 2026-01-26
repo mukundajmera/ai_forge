@@ -23,6 +23,14 @@ export interface FineTuneConfig {
     rank: number;
     batch_size: number;
     use_pissa: boolean;
+    // Camel case aliases for frontend convenience
+    projectName?: string;
+    baseModel?: string;
+    datasetId?: string;
+    learningRate?: number;
+    batchSize?: number;
+    usePissa?: boolean;
+    method?: 'pissa' | 'lora' | 'qlora';
 }
 
 export interface FineTuneResponse {
