@@ -239,6 +239,7 @@ jobs:
 
     steps:
       - name: Check all jobs passed
+        working-directory: .
         run: |
           # Critical jobs must pass
           if [[ "${{ needs.lint-and-typecheck.result }}" != "success" ]] ||
