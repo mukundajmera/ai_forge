@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { useModels } from '@/lib/hooks'
 import { Save, RotateCcw } from 'lucide-react'
 
 export function ModelDefaults() {
@@ -12,6 +13,7 @@ export function ModelDefaults() {
     const [method, setMethod] = useState('pissa')
     const [baseModel, setBaseModel] = useState('llama-3.2-3b')
     const [quantization, setQuantization] = useState('q4_k_m')
+    const { data: models } = useModels();
 
     return (
         <div className="settings-section">
@@ -27,12 +29,7 @@ export function ModelDefaults() {
                     <Select
                         value={baseModel}
                         onChange={(e) => setBaseModel(e.target.value)}
-                        options={[
-                            { value: 'llama-3.2-3b', label: 'Llama 3.2 3B' },
-                            { value: 'llama-3.2-7b', label: 'Llama 3.2 7B' },
-                            { value: 'codellama-7b', label: 'CodeLlama 7B' },
-                            { value: 'mistral-7b', label: 'Mistral 7B' },
-                        ]}
+                        options={models?.map(m => ({ value: m.id, label: m.id })) || []}
                     />
                 </div>
 

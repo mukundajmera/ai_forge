@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
-import { useDatasets, useStartFineTune } from '@/lib/hooks';
+import { useDatasets, useStartFineTune, useModels } from '@/lib/hooks';
 import {
     ChevronRight,
     ChevronLeft,
@@ -34,7 +34,7 @@ const optionalNumber = (schema: z.ZodNumber) =>
 const fineTuneSchema = z.object({
     projectName: z.string().min(1, 'Project name is required').max(50, 'Max 50 characters'),
     datasetId: z.string().min(1, 'Please select a dataset'),
-    baseModel: z.enum(['Llama-3.2-3B', 'Llama-3.2-7B', 'Llama-3.2-13B']),
+    baseModel: z.string().min(1, 'Please select a base model'),
     preset: z.enum(['fast', 'balanced', 'thorough']),
     // Advanced options (override preset defaults)
     epochs: optionalNumber(z.number().min(1).max(10)),
@@ -81,11 +81,7 @@ const PRESETS: Record<string, PresetConfig> = {
     },
 };
 
-const MODEL_INFO: Record<string, { memory: string; speed: string }> = {
-    'Llama-3.2-3B': { memory: '6-8GB RAM', speed: 'Fastest' },
-    'Llama-3.2-7B': { memory: '10-14GB RAM', speed: 'Balanced' },
-    'Llama-3.2-13B': { memory: '16-20GB RAM', speed: 'Best quality' },
-};
+
 
 // =============================================================================
 // Component
@@ -104,7 +100,8 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
     const [step, setStep] = useState(1);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const { data: datasets, isLoading: datasetsLoading } = useDatasets();
-    console.log('NewFineTuneDialog: Datasets:', datasets, 'Loading:', datasetsLoading);
+    const { data: models, isLoading: modelsLoading } = useModels();
+    console.log('NewFineTuneDialog: Datasets:', datasets, 'Models:', models);
     const startFineTune = useStartFineTune();
 
     const {
@@ -140,22 +137,15 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
 
     const onSubmit = async (data: FineTuneFormData) => {
         try {
-            // Convert frontend model name to backend format
-            const baseModelMap: Record<string, string> = {
-                'Llama-3.2-3B': 'unsloth/Llama-3.2-3B-Instruct',
-                'Llama-3.2-7B': 'unsloth/Llama-3.2-7B-Instruct',
-                'Llama-3.2-13B': 'unsloth/Llama-3.2-13B-Instruct',
-            };
-
             const config = {
-                project_name: data.projectName,
-                base_model: baseModelMap[data.baseModel] || data.baseModel,
-                dataset_id: data.datasetId,
+                projectName: data.projectName,
+                baseModel: data.baseModel,
+                datasetId: data.datasetId,
                 epochs: data.epochs || preset.epochs,
-                learning_rate: data.learningRate || preset.lr,
+                learningRate: data.learningRate || preset.lr,
                 rank: data.rank || preset.rank,
-                batch_size: data.batchSize || preset.batchSize,
-                use_pissa: true,
+                batchSize: data.batchSize || preset.batchSize,
+                method: 'pissa' as const,
             };
 
             const result = await startFineTune.mutateAsync(config);
@@ -289,28 +279,32 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
                         {/* Base Model Selection */}
                         <div className="form-group">
                             <label className="form-label">Base Model</label>
-                            <div className="radio-cards">
-                                {Object.entries(MODEL_INFO).map(([model, info]) => (
-                                    <label
-                                        key={model}
-                                        className={`radio-card ${selectedBaseModel === model ? 'selected' : ''}`}
-                                    >
-                                        <input
-                                            type="radio"
-                                            {...register('baseModel')}
-                                            value={model}
-                                        />
-                                        <div className="card-content">
-                                            <div className="card-title">{model}</div>
-                                            <div className="card-meta">
-                                                <span>{info.memory}</span>
-                                                <span className="separator">•</span>
-                                                <span>{info.speed}</span>
+                            {modelsLoading ? (
+                                <div className="loading-placeholder">Loading models...</div>
+                            ) : (
+                                <div className="radio-cards">
+                                    {models?.map((model) => (
+                                        <label
+                                            key={model.id}
+                                            className={`radio-card ${selectedBaseModel === model.id ? 'selected' : ''}`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                {...register('baseModel')}
+                                                value={model.id}
+                                            />
+                                            <div className="card-content">
+                                                <div className="card-title">{model.id}</div>
+                                                <div className="card-meta">
+                                                    <span>{(model.size / (1024 * 1024 * 1024)).toFixed(1)} GB</span>
+                                                    <span className="separator">•</span>
+                                                    <span>{model.quantization || 'Q4_K_M'}</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </label>
-                                ))}
-                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Preset Selection */}

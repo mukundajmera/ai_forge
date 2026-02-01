@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 import traceback
+import signal
 
 # Setup logging for worker
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +36,15 @@ def run_training_job(job_id: str, config_dict: dict, data_path: str, output_base
                 json.dump(progress_data, f)
         
         update_progress("initializing", 5.0)
+        
+        # Setup signal handler for graceful shutdown
+        def signal_handler(signum, frame):
+            logger.info(f"Worker {os.getpid()} received signal {signum}, shutting down...")
+            update_progress("cancelled", progress=0.0, error="Job cancelled")
+            sys.exit(0) # Exit immediately but cleanly
+            
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
         
         # 1. Setup Environment
         # Add project root to path
@@ -71,6 +81,51 @@ def run_training_job(job_id: str, config_dict: dict, data_path: str, output_base
             )
             
         # 3. Configure
+        
+        # Helper to resolve Ollama models
+        def resolve_ollama_path(model_name: str) -> str | None:
+            try:
+                if ":" in model_name:
+                    name, tag = model_name.split(":", 1)
+                else:
+                    name, tag = model_name, "latest"
+                
+                if "/" in name:
+                    namespace, model = name.split("/", 1)
+                else:
+                    namespace, model = "library", name
+                    
+                registry = "registry.ollama.ai"
+                ollama_base = Path(os.path.expanduser("~/.ollama/models"))
+                manifest_path = ollama_base / "manifests" / registry / namespace / model / tag
+                
+                if not manifest_path.exists():
+                    return None
+                    
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+                    
+                for layer in manifest.get("layers", []):
+                    if layer.get("mediaType") == "application/vnd.ollama.image.model":
+                        digest = layer.get("digest")
+                        if digest:
+                            blob_name = digest.replace(":", "-")
+                            blob_path = ollama_base / "blobs" / blob_name
+                            if blob_path.exists():
+                                return str(blob_path)
+                return None
+            except Exception as e:
+                logger.warning(f"Failed to resolve Ollama path: {e}")
+                return None
+
+        # Resolve base model path
+        base_model = config_dict["base_model"]
+        if not Path(base_model).exists() and not base_model.startswith("unsloth/") and not base_model.startswith("http"):
+             resolved = resolve_ollama_path(base_model)
+             if resolved:
+                 logger.info(f"Resolved Ollama model {base_model} to {resolved}")
+                 config_dict["base_model"] = resolved
+
         init_method = InitMethod.PISSA if config_dict.get("use_pissa", True) else InitMethod.GAUSSIAN
         
         ft_config = FineTuneConfig(

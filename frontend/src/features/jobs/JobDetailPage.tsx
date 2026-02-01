@@ -61,7 +61,7 @@ export function JobDetailPage() {
     )
   }
 
-  const isActive = job.status === 'running' || job.status === 'queued'
+  const isActive = job.status === 'running' || job.status === 'queued' || job.status === 'training'
   const isCompleted = job.status === 'completed'
   const isFailed = job.status === 'failed'
 

@@ -1108,6 +1108,50 @@ async def generate_dataset_task(job_id: str, dataset_id: str) -> None:
                                 }
                                 examples.append(example)
                 
+                elif file_type == "pdf":
+                    # Extract text from PDF
+                    try:
+                        import pypdf
+                        import io
+                        
+                        pdf_bytes = file_path.read_bytes()
+                        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+                        
+                        pdf_text = ""
+                        for page in reader.pages:
+                            text = page.extract_text()
+                            if text:
+                                pdf_text += text + "\n\n"
+                        
+                        # clean up text
+                        pdf_text = pdf_text.strip()
+                        
+                        if not pdf_text:
+                            # Fallback if no text extracted (scanned PDF?)
+                             logger.warning(f"No text extracted from PDF {filename}")
+                             pass
+
+                        # Extract paragraphs/sections
+                        paragraphs = [p.strip() for p in pdf_text.split("\n\n") if p.strip() and len(p.strip()) > 50]
+                        
+                        for para in paragraphs[:job["config"]["questionsPerBlock"]]:
+                            example = {
+                                "id": str(uuid.uuid4()),
+                                "question": f"What information is contained in {filename}?",
+                                "questionType": "content",
+                                "context": para[:1500],
+                                "answer": para[:500] + ("..." if len(para) > 500 else ""),
+                                "reasoning": f"Extracting content from PDF {filename}",
+                                "qualityScore": 0.70,
+                                "difficulty": "easy",
+                            }
+                            examples.append(example)
+                            
+                    except Exception as pdf_err:
+                         logger.warning(f"Failed to parse PDF {filename}: {pdf_err}")
+                         # Fallback to empty to avoid crashing or garbage
+
+                
                 else:
                     # Text files - extract paragraphs
                     paragraphs = [p.strip() for p in file_content.split("\n\n") if p.strip() and len(p.strip()) > 50]

@@ -11,7 +11,7 @@ export default defineConfig({
         ['list'],
     ],
     use: {
-        baseURL: 'http://localhost:4173',
+        baseURL: 'http://localhost:5175',
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
@@ -32,8 +32,8 @@ export default defineConfig({
     ],
     webServer: {
         // Use preview (serves built dist) in CI, dev server locally
-        command: process.env.CI ? 'npm run preview' : 'npm run dev',
-        url: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173',
+        command: process.env.CI ? 'npm run preview' : 'npm run dev -- --port 5175',
+        url: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5175',
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
     },

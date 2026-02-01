@@ -533,6 +533,25 @@ async def cancel_job(job_id: str) -> dict[str, str]:
     if job["status"] in ("completed", "failed"):
         raise HTTPException(status_code=400, detail="Job already finished")
     
+    # Check if process is running
+    if job_id in training_processes:
+        process = training_processes[job_id]
+        if process.is_alive():
+            logger.info(f"Terminating process {process.pid} for job {job_id}")
+            process.terminate()
+            
+            # Allow some time for graceful cleanup
+            import time
+            start = time.time()
+            while process.is_alive() and time.time() - start < 3:
+                await asyncio.sleep(0.1)
+                
+            if process.is_alive():
+                 logger.warning(f"Process {process.pid} did not terminate, forcing kill")
+                 process.kill()
+        
+        training_processes.pop(job_id, None)
+
     job["status"] = "cancelled"
     job["updated_at"] = datetime.now().isoformat()
     
@@ -983,15 +1002,26 @@ async def validate_model(job_id: str) -> ValidateResponse:
 # Background Tasks
 # --------------------------------------------------------------------------
 
+import multiprocessing
 import asyncio
-from concurrent.futures import ProcessPoolExecutor
-from conductor.training_worker import run_training_job
 
-# Global executor for heavy tasks
-process_pool = ProcessPoolExecutor(max_workers=1)
+# Global dict to track training processes
+training_processes: dict[str, multiprocessing.Process] = {}
+
+
+# Wrapper to put result in queue
+def worker_wrapper(q, job_id, config, data_path, output_dir):
+    """Worker wrapper to execute training and capture result."""
+    try:
+        from conductor.training_worker import run_training_job
+        res = run_training_job(job_id, config, data_path, output_dir)
+        q.put(res)
+    except Exception as e:
+        q.put({"success": False, "error": str(e)})
 
 async def execute_fine_tune(job_id: str) -> None:
-    """Execute fine-tuning job in background using process pool."""
+    """Execute fine-tuning job in background using multiprocessing.Process."""
+    
     job = state.jobs.get(job_id)
     if not job:
         return
@@ -1000,23 +1030,48 @@ async def execute_fine_tune(job_id: str) -> None:
         job["status"] = "training"
         job["updated_at"] = datetime.now().isoformat()
         
-        # Run in separate process to avoid blocking main loop
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            process_pool,
-            run_training_job,
-            job_id,
-            job["config"],
-            job["data_path"],
-            "./output"
+        # Create a Queue to receive the result from the worker
+        # We need this to get success status and loss directly
+        result_queue = multiprocessing.Queue()
+        
+        # Run in separate process
+        p = multiprocessing.Process(
+            target=worker_wrapper,
+            args=(result_queue, job_id, job["config"], job["data_path"], "./output"),
+            name=f"worker_{job_id}"
         )
         
-        if result["success"]:
+        training_processes[job_id] = p
+        p.start()
+        logger.info(f"Started training process {p.pid} for job {job_id}")
+        
+        # Monitor process
+        while p.is_alive():
+            await asyncio.sleep(1)
+            
+        # Process finished
+        training_processes.pop(job_id, None)
+        
+        # Check if it was cancelled
+        if job["status"] == "cancelled":
+            logger.info(f"Job {job_id} was cancelled, ignoring result")
+            return
+
+        # Get result
+        result = None
+        if not result_queue.empty():
+            result = result_queue.get()
+            
+        if p.exitcode == 0 and result and result.get("success"):
             job["status"] = "completed"
             job["progress"] = 100.0
             job["loss"] = result.get("loss", 0.0)
+            logger.info(f"Job {job_id} completed successfully")
         else:
-            raise Exception(result.get("error", "Unknown error"))
+            error_msg = result.get("error") if result else f"Process exited with code {p.exitcode}"
+            logger.error(f"Job {job_id} failed: {error_msg}")
+            job["status"] = "failed"
+            job["error"] = error_msg
             
     except Exception as e:
         logger.error(f"Fine-tuning failed for {job_id}: {e}")

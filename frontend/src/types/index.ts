@@ -214,7 +214,7 @@ export interface DatasetPreview {
 // Training Job Types (Enhanced)
 // =============================================================================
 
-export type TrainingJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TrainingJobStatus = 'queued' | 'running' | 'training' | 'completed' | 'failed' | 'cancelled';
 export type TrainingMethod = 'pissa' | 'lora' | 'qlora';
 
 export interface TrainingConfig {
