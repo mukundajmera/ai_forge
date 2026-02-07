@@ -1,0 +1,52 @@
+[
+    {
+        "content": "def greet(name: str) -> str:\n    \"\"\"Return a greeting message.\"\"\"\n    return f'Hello, {name}!'",
+        "language": "python",
+        "file_path": "utils.py",
+        "start_line": 1,
+        "end_line": 3,
+        "chunk_type": "function",
+        "name": "greet",
+        "docstring": "Return a greeting message."
+    },
+    {
+        "content": "class Calculator:\n    \"\"\"Simple arithmetic calculator.\"\"\"\n    \n    def add(self, a: int, b: int) -> int:\n        return a + b\n    \n    def subtract(self, a: int, b: int) -> int:\n        return a - b",
+        "language": "python",
+        "file_path": "math_utils.py",
+        "start_line": 1,
+        "end_line": 8,
+        "chunk_type": "class",
+        "name": "Calculator",
+        "docstring": "Simple arithmetic calculator."
+    },
+    {
+        "content": "async def fetch_data(url: str) -> dict:\n    \"\"\"Fetch data from URL.\"\"\"\n    async with aiohttp.ClientSession() as session:\n        async with session.get(url) as response:\n            return await response.json()",
+        "language": "python",
+        "file_path": "api.py",
+        "start_line": 10,
+        "end_line": 14,
+        "chunk_type": "function",
+        "name": "fetch_data",
+        "docstring": "Fetch data from URL."
+    },
+    {
+        "content": "def validate_email(email: str) -> bool:\n    \"\"\"Validate email format.\"\"\"\n    import re\n    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'\n    return bool(re.match(pattern, email))",
+        "language": "python",
+        "file_path": "validators.py",
+        "start_line": 1,
+        "end_line": 5,
+        "chunk_type": "function",
+        "name": "validate_email",
+        "docstring": "Validate email format."
+    },
+    {
+        "content": "class DataProcessor:\n    \"\"\"Process and transform data.\"\"\"\n    \n    def __init__(self, config: dict):\n        self.config = config\n    \n    def process(self, data: list) -> list:\n        return [self._transform(item) for item in data]\n    \n    def _transform(self, item):\n        return {'value': item, 'processed': True}",
+        "language": "python",
+        "file_path": "processor.py",
+        "start_line": 1,
+        "end_line": 11,
+        "chunk_type": "class",
+        "name": "DataProcessor",
+        "docstring": "Process and transform data."
+    }
+]

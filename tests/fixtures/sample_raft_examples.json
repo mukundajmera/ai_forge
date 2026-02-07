@@ -1,0 +1,37 @@
+[
+    {
+        "instruction": "What does the greet function do?",
+        "input": "def greet(name: str) -> str:\n    \"\"\"Return a greeting message.\"\"\"\n    return f'Hello, {name}!'",
+        "output": "The `greet` function takes a name parameter of type string and returns a formatted greeting message. It uses an f-string to create the message 'Hello, {name}!' where the name is interpolated into the string.",
+        "context": "This is a simple utility function for generating greeting messages.",
+        "quality_score": 0.85
+    },
+    {
+        "instruction": "Explain the Calculator class and its methods.",
+        "input": "class Calculator:\n    \"\"\"Simple arithmetic calculator.\"\"\"\n    \n    def add(self, a: int, b: int) -> int:\n        return a + b\n    \n    def subtract(self, a: int, b: int) -> int:\n        return a - b",
+        "output": "The Calculator class provides basic arithmetic operations. It has two methods: `add` which takes two integers and returns their sum, and `subtract` which returns the difference between the first and second number. Both methods use type hints for clarity.",
+        "context": "A utility class for basic math operations.",
+        "quality_score": 0.9
+    },
+    {
+        "instruction": "How does the fetch_data async function work?",
+        "input": "async def fetch_data(url: str) -> dict:\n    \"\"\"Fetch data from URL.\"\"\"\n    async with aiohttp.ClientSession() as session:\n        async with session.get(url) as response:\n            return await response.json()",
+        "output": "The `fetch_data` function is an async function that fetches JSON data from a URL. It creates an aiohttp ClientSession, makes a GET request to the provided URL, and returns the JSON response. The function uses async context managers for proper resource cleanup.",
+        "context": "Async HTTP client function using aiohttp.",
+        "quality_score": 0.88
+    },
+    {
+        "instruction": "What validation does validate_email perform?",
+        "input": "def validate_email(email: str) -> bool:\n    \"\"\"Validate email format.\"\"\"\n    import re\n    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'\n    return bool(re.match(pattern, email))",
+        "output": "The `validate_email` function checks if an email address matches a standard email format using a regular expression. It validates that the email has: alphanumeric characters before the @, a domain name after @, and a TLD of at least 2 characters. Returns True if valid, False otherwise.",
+        "context": "Email validation utility function.",
+        "quality_score": 0.82
+    },
+    {
+        "instruction": "Explain the DataProcessor class initialization and processing flow.",
+        "input": "class DataProcessor:\n    \"\"\"Process and transform data.\"\"\"\n    \n    def __init__(self, config: dict):\n        self.config = config\n    \n    def process(self, data: list) -> list:\n        return [self._transform(item) for item in data]\n    \n    def _transform(self, item):\n        return {'value': item, 'processed': True}",
+        "output": "The DataProcessor class is initialized with a configuration dictionary. Its main method `process` takes a list of items and transforms each one using the private `_transform` method. The transform wraps each item in a dictionary with 'value' and 'processed' keys, enabling tracking of processed items.",
+        "context": "Data transformation pipeline class.",
+        "quality_score": 0.87
+    }
+]
