@@ -31,10 +31,7 @@ export default defineConfig({
                 statements: 15,
             },
         },
-        reporters: ['default', 'html'],
-        outputFile: {
-            html: './test-results/index.html',
-        },
+        reporters: ['default'],
     },
     resolve: {
         alias: {
