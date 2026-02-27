@@ -55,7 +55,12 @@ export function GenerateDatasetDialog({ open, onClose }: GenerateDatasetDialogPr
 
     const onSubmit = async (data: GenerateFormData) => {
         try {
-            await generateDataset.mutateAsync(data)
+            await generateDataset.mutateAsync({
+                sourceIds: data.sourceIds,
+                name: data.name,
+                format: data.format as 'alpaca' | 'sharegpt',
+                questionsPerBlock: data.questionsPerBlock,
+            })
             reset()
             onClose()
         } catch (error) {

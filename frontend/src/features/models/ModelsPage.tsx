@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useModels } from '@/lib/hooks';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -59,7 +60,7 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
                     <h1 className="text-2xl font-bold">Models</h1>
                     <p className="text-muted">Manage and deploy your fine-tuned models</p>
                 </div>
-                <Button variant="primary">
+                <Button intent="primary">
                     <Rocket className="w-4 h-4 mr-2" />
                     Deploy to Ollama
                 </Button>
@@ -115,9 +116,11 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
                         <p className="text-sm text-muted mb-4">
                             Complete a training job to create your first model
                         </p>
-                        <Button variant="secondary" href="/jobs/new">
-                            Start Training
-                        </Button>
+                        <Link to="/jobs/new">
+                            <Button intent="secondary">
+                                Start Training
+                            </Button>
+                        </Link>
                     </Card>
                 )}
             </div>

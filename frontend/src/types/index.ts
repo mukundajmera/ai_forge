@@ -313,8 +313,9 @@ export interface Model {
 // Mission Types (Antigravity Integration)
 // =============================================================================
 
-export type MissionStatus = 'active' | 'pending_approval' | 'completed' | 'failed';
-export type MissionType = 'retrain_suggestion' | 'deployment_approval' | 'quality_alert';
+export type MissionStatus = 'active' | 'pending_approval' | 'completed' | 'failed' | 'approved' | 'rejected';
+export type MissionType = 'retrain_suggestion' | 'deployment_approval' | 'quality_alert' | 'performance_drift' | 'data_quality_issue';
+export type MissionPriority = 'low' | 'medium' | 'high';
 export type ArtifactType = 'chart' | 'report' | 'log' | 'dashboard';
 
 export interface Artifact {
@@ -322,14 +323,33 @@ export interface Artifact {
     missionId: string;
     type: ArtifactType;
     title: string;
+    description?: string;
     url?: string;
+    format?: string;
+    size?: number;
     payload?: Record<string, unknown>;
     createdAt: string;
+}
+
+export interface MissionApproval {
+    approvedAt?: string;
+    approvedBy?: string;
+    rejectedAt?: string;
+    rejectedBy?: string;
+    reason?: string;
+    rejectionReason?: string;
+}
+
+export interface MissionReasoning {
+    trigger?: string;
+    analysis?: string;
+    expectedOutcome?: string;
 }
 
 export interface RecommendedAction {
     type: 'start_training' | 'deploy_model' | 'rollback_model';
     params?: Record<string, unknown>;
+    estimatedDuration?: string;
 }
 
 export interface Mission {
@@ -338,13 +358,17 @@ export interface Mission {
     description: string;
     status: MissionStatus;
     type: MissionType;
+    priority?: MissionPriority;
     confidence: number; // 0-1
+    reasoning?: MissionReasoning | string;
     createdAt: string;
     completedAt?: string;
     relatedJobIds: string[];
     relatedModelIds: string[];
+    relatedDatasetIds?: string[];
     recommendedAction?: RecommendedAction;
     artifacts: Artifact[];
+    approval?: MissionApproval;
 }
 
 // =============================================================================

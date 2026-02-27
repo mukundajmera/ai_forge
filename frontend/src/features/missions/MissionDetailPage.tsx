@@ -218,6 +218,9 @@ export function MissionDetailPage() {
                                 Agent Analysis
                             </h2>
 
+                            {typeof mission.reasoning === 'string' ? (
+                                <p className="section-text">{mission.reasoning}</p>
+                            ) : mission.reasoning ? (
                             <div className="reasoning-grid">
                                 <div className="reasoning-item">
                                     <h3 className="reasoning-label">
@@ -243,6 +246,9 @@ export function MissionDetailPage() {
                                     <p className="reasoning-text">{mission.reasoning.expectedOutcome}</p>
                                 </div>
                             </div>
+                            ) : (
+                                <p className="section-text">No analysis available</p>
+                            )}
                         </section>
 
                         {/* Recommended Action */}

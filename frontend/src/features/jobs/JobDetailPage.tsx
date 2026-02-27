@@ -17,7 +17,8 @@ import { Tabs, TabPanel } from '@/components/ui/Tabs'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { QueryError } from '@/components/ui/QueryError'
 import { formatRelativeTime } from '@/utils/formatters'
-import { useJob, useJobMetrics, useJobLogs, useCancelJob, useStartFineTune } from '@/lib/hooks'
+import { useJob, useJobMetrics, useJobLogs, useCancelJob } from '@/lib/hooks'
+import { useStartJob } from '@/features/jobs/hooks/useJobs'
 
 export function JobDetailPage() {
   const { jobId } = useParams()
@@ -29,9 +30,9 @@ export function JobDetailPage() {
   const { data: metrics } = useJobMetrics(jobId)
   const { data: logsData } = useJobLogs(jobId)
   const cancelMutation = useCancelJob()
-  const rerunMutation = useStartFineTune()
+  const rerunMutation = useStartJob()
 
-  const logs = logsData?.logs || []
+  const logs = logsData || []
 
   if (isLoading) {
     return (
@@ -85,7 +86,7 @@ export function JobDetailPage() {
         learningRate: job.learningRate || 0.0001,
         rank: overrides?.rank as number || job.rank || 64,
         batchSize: overrides?.batchSize as number || job.batchSize || 4,
-        method: job.method || 'pissa',
+        method: (job.method || 'pissa') as 'pissa' | 'lora' | 'qlora',
       }
       const result = await rerunMutation.mutateAsync(config)
       navigate(`/jobs/${result.jobId}`)
@@ -111,7 +112,7 @@ export function JobDetailPage() {
         <div className="status-banner training">
           <div className="banner-content">
             <div className="banner-icon">
-              <span className="spinner" />
+              <span className="spinner" role="status" aria-label="Training in progress" />
             </div>
             <div className="banner-text">
               <h2>Training in Progress</h2>
@@ -284,9 +285,9 @@ export function JobDetailPage() {
             <Card className="logs-card">
               <div className="logs-list">
                 {logs.length > 0 ? (
-                  logs.map((log: string, i: number) => (
-                    <div key={i} className="log-entry">
-                      <span className="log-message">{log}</span>
+                  logs.map((log, i: number) => (
+                    <div key={i} className={`log-entry ${log.level === 'error' ? 'error' : log.level === 'warning' ? 'warning' : ''}`}>
+                      <span className="log-message">{log.message}</span>
                     </div>
                   ))
                 ) : (

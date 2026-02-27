@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
     Plus,
     RefreshCw,
@@ -21,6 +22,7 @@ import { formatBytes, formatRelativeTime, truncatePath } from '@/utils/formatter
 import type { DataSource } from '@/types'
 
 export function DataSourcesPage() {
+    const navigate = useNavigate()
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
     const { data: dataSources, isLoading, error, refetch } = useDataSources()
@@ -60,7 +62,7 @@ export function DataSourcesPage() {
                     <Button
                         intent="secondary"
                         icon={<Sparkles size={16} />}
-                        onClick={() => window.location.href = '/datasets/generated'}
+                        onClick={() => navigate('/datasets/generated')}
                     >
                         View Datasets
                     </Button>
@@ -150,6 +152,8 @@ export function DataSourcesPage() {
                                                 <span
                                                     className="tooltip"
                                                     data-tooltip={source.error}
+                                                    role="img"
+                                                    aria-label="Error warning"
                                                     style={{
                                                         marginLeft: 'var(--space-2)',
                                                         cursor: 'help'
@@ -170,7 +174,7 @@ export function DataSourcesPage() {
                                                     <button
                                                         className="btn btn-ghost btn-icon tooltip"
                                                         data-tooltip="Generate Dataset"
-                                                        onClick={() => window.location.href = `/datasets/generated?source=${source.id}`}
+                                                        onClick={() => navigate(`/datasets/generated?source=${source.id}`)}
                                                     >
                                                         <Layers size={14} style={{ color: 'var(--primary-400)' }} />
                                                     </button>
