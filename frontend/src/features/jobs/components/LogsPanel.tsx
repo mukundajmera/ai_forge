@@ -23,17 +23,17 @@ export function LogsPanel({ jobId, height = 384 }: LogsPanelProps) {
     const { logs, isConnected } = useLogStream(jobId);
     const [autoScroll, setAutoScroll] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [clearedAt, setClearedAt] = useState(0);
+    const [clearedAt, setClearedAt] = useState<string | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Support clearing logs visually (hide logs received before clear time)
     const visibleLogs = useMemo(() => {
-        if (clearedAt === 0) return logs;
-        return logs.filter((_, idx) => idx >= clearedAt);
+        if (!clearedAt) return logs;
+        return logs.filter((log) => log.timestamp > clearedAt);
     }, [logs, clearedAt]);
 
-    const clearLogs = () => setClearedAt(logs.length);
+    const clearLogs = () => setClearedAt(new Date().toISOString());
 
     const downloadLogs = () => {
         const content = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');

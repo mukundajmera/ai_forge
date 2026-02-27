@@ -10,7 +10,7 @@ import type { DataSource } from '@/types'
 const generateSchema = z.object({
     name: z.string().min(3, 'Name must be at least 3 characters'),
     sourceIds: z.array(z.string()).min(1, 'Select at least one data source'),
-    format: z.string(),
+    format: z.enum(['alpaca', 'sharegpt']),
     questionsPerBlock: z.number().min(1).max(20),
 })
 
@@ -58,7 +58,7 @@ export function GenerateDatasetDialog({ open, onClose }: GenerateDatasetDialogPr
             await generateDataset.mutateAsync({
                 sourceIds: data.sourceIds,
                 name: data.name,
-                format: data.format as 'alpaca' | 'sharegpt',
+                format: data.format,
                 questionsPerBlock: data.questionsPerBlock,
             })
             reset()

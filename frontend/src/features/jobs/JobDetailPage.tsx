@@ -86,7 +86,7 @@ export function JobDetailPage() {
         learningRate: job.learningRate || 0.0001,
         rank: overrides?.rank as number || job.rank || 64,
         batchSize: overrides?.batchSize as number || job.batchSize || 4,
-        method: (job.method || 'pissa') as 'pissa' | 'lora' | 'qlora',
+        method: (['pissa', 'lora', 'qlora'].includes(job.method || '') ? job.method : 'pissa') as 'pissa' | 'lora' | 'qlora',
       }
       const result = await rerunMutation.mutateAsync(config)
       navigate(`/jobs/${result.jobId}`)
