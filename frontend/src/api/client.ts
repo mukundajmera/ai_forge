@@ -586,8 +586,10 @@ class APIClient {
     // =========================================================================
 
     async getDatasetVersions(datasetId?: string): Promise<DatasetVersion[]> {
-        const params = datasetId ? `?dataset_id=${datasetId}` : '';
-        return this.request<DatasetVersion[]>(`/api/dataset-versions${params}`);
+        const params = new URLSearchParams();
+        if (datasetId) params.append('dataset_id', datasetId);
+        const query = params.toString();
+        return this.request<DatasetVersion[]>(`/api/dataset-versions${query ? `?${query}` : ''}`);
     }
 
     async createDatasetVersion(data: {
@@ -613,8 +615,10 @@ class APIClient {
     }
 
     async getRecipe(id: string, hardware?: string): Promise<RecipeWithDefaults> {
-        const params = hardware ? `?hardware=${hardware}` : '';
-        return this.request<RecipeWithDefaults>(`/api/recipes/${id}${params}`);
+        const params = new URLSearchParams();
+        if (hardware) params.append('hardware', hardware);
+        const query = params.toString();
+        return this.request<RecipeWithDefaults>(`/api/recipes/${encodeURIComponent(id)}${query ? `?${query}` : ''}`);
     }
 }
 
