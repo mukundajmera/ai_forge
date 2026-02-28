@@ -12,7 +12,9 @@ import {
   HelpCircle,
   Menu,
   X,
-  Database
+  Database,
+  FlaskConical,
+  BookOpen
 } from 'lucide-react'
 
 interface NavItem {
@@ -27,6 +29,8 @@ const mainNavItems: NavItem[] = [
   { to: '/datasets', label: 'Data Sources', icon: FolderOpen },
   { to: '/datasets/generated', label: 'Training Datasets', icon: Database },
   { to: '/jobs', label: 'Jobs', icon: Activity },
+  { to: '/experiments', label: 'Experiments', icon: FlaskConical },
+  { to: '/recipes', label: 'Recipes', icon: BookOpen },
   { to: '/models', label: 'Models', icon: Boxes },
   { to: '/monitoring', label: 'Monitoring', icon: BarChart3 },
   { to: '/missions', label: 'Missions', icon: Sparkles },
