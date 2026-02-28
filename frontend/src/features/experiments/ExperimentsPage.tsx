@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/Input'
 import { EmptyState, TableSkeleton } from '@/components/ui/EmptyState'
 import { formatRelativeTime } from '@/utils/formatters'
 import { useExperiments, useDeleteExperiment, useCompareExperiments } from './hooks/useExperiments'
-import type { Experiment, ExperimentStatus } from '@/types'
+import type { ExperimentStatus } from '@/types'
 
 const statusFilters = [
     { value: 'all', label: 'All' },

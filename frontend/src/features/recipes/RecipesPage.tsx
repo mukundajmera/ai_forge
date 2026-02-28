@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useRecipes, useRecipe } from './hooks/useRecipes'
-import type { Recipe, TaskType, HardwareProfile } from '@/types'
+import type { TaskType, HardwareProfile } from '@/types'
 
 const taskTypeIcons: Record<TaskType, React.ReactNode> = {
     instruction_tuning: <GraduationCap size={24} />,

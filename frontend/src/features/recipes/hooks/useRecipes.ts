@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
-import type { Recipe, RecipeWithDefaults } from '@/types'
 
 export const recipeQueryKeys = {
     all: ['recipes'] as const,

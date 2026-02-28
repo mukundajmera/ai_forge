@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiClient, APIError } from '@/lib/api'
-import type { Experiment, ExperimentComparison } from '@/types'
+import { apiClient } from '@/lib/api'
 
 export const experimentQueryKeys = {
     all: ['experiments'] as const,
