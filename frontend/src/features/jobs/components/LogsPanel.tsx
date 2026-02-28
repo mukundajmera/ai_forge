@@ -47,7 +47,7 @@ export function LogsPanel({ jobId, height = 384 }: LogsPanelProps) {
         document.body.removeChild(a);
         setTimeout(() => {
             URL.revokeObjectURL(url);
-        }, 0);
+        }, 100);
     };
 
     // Auto-scroll to bottom when new logs arrive
