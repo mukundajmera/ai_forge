@@ -225,7 +225,8 @@ export function ExperimentsPage() {
                             <input
                                 type="checkbox"
                                 checked={selectedIds.includes(exp.id)}
-                                onChange={() => toggleSelection(exp.id)}
+                                onChange={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
                                 aria-label={`Select experiment ${exp.name}`}
                                 style={{ width: 16, height: 16, cursor: 'pointer' }}
                             />

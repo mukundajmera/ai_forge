@@ -80,6 +80,12 @@ class CompareExperimentsRequest(BaseModel):
     experiment_ids: list[str] = Field(min_length=2, max_length=10)
 
 
+class UpdateDatasetVersionStatusRequest(BaseModel):
+    """Request to update a dataset version's status."""
+
+    status: DatasetVersionStatus
+
+
 class ExperimentComparison(BaseModel):
     """Comparison result for multiple experiments."""
 
@@ -205,6 +211,17 @@ async def compare_experiments(
         for exp in experiments:
             metric_summary[key][exp.id] = getattr(exp.metrics, key, None)
 
+    # Include custom metrics from all experiments
+    all_custom_keys: set[str] = set()
+    for exp in experiments:
+        all_custom_keys.update(exp.metrics.custom.keys())
+    for key in sorted(all_custom_keys):
+        metric_summary[f"custom:{key}"] = {}
+        for exp in experiments:
+            metric_summary[f"custom:{key}"][exp.id] = exp.metrics.custom.get(
+                key
+            )
+
     return ExperimentComparison(
         experiments=experiments,
         metric_summary=metric_summary,
@@ -276,7 +293,7 @@ async def get_dataset_version(version_id: str) -> DatasetVersion:
 @router.patch("/dataset-versions/{version_id}")
 async def update_dataset_version_status(
     version_id: str,
-    status: DatasetVersionStatus,
+    request: UpdateDatasetVersionStatusRequest,
 ) -> DatasetVersion:
     """Update a dataset version's status."""
     data = storage.get("dataset_versions", version_id)
@@ -286,6 +303,6 @@ async def update_dataset_version_status(
         )
 
     version = DatasetVersion(**data)
-    version.status = status
+    version.status = request.status
     storage.set("dataset_versions", version.id, version.model_dump())
     return version

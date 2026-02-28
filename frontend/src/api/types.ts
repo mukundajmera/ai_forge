@@ -12,6 +12,7 @@ import type {
     ExperimentComparison,
     DatasetVersion,
     Recipe,
+    RecipeDefaults,
     RecipeWithDefaults,
     EvalMetrics,
 } from '@/types';
@@ -196,6 +197,7 @@ export type {
     ExperimentComparison,
     DatasetVersion,
     Recipe,
+    RecipeDefaults,
     RecipeWithDefaults,
     EvalMetrics,
 };

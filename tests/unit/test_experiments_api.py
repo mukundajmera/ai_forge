@@ -11,7 +11,6 @@ Run with: pytest tests/unit/test_experiments_api.py -v
 
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 # Import path setup
 import sys
@@ -281,8 +280,9 @@ class TestRecipeEndpoints:
         """Test that listing includes built-in recipes."""
         storage = MockStorage()
         recipes = list(BUILTIN_RECIPES)
-        custom = storage.get_all("recipes")
-        recipes.extend([])  # No custom recipes
+        custom_recipes = storage.get_all("recipes")
+        assert len(custom_recipes) == 0  # No custom recipes yet
+        recipes.extend(custom_recipes.values())
         assert len(recipes) == 4
 
     def test_filter_by_task_type(self):

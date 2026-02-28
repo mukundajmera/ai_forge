@@ -27,7 +27,6 @@ from conductor.models import (
     Recipe,
     RecipeDefaults,
     TaskType,
-    EvalSuiteConfig,
     BUILTIN_RECIPES,
 )
 

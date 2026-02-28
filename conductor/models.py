@@ -9,7 +9,6 @@ This module defines the data models for:
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
