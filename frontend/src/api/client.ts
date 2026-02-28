@@ -21,6 +21,12 @@ import type {
     ModelInfo,
     SystemStatus,
     HealthCheck,
+    Experiment,
+    ExperimentComparison,
+    DatasetVersion,
+    Recipe,
+    RecipeDefaults,
+    RecipeWithDefaults,
 } from './types';
 
 import type {
@@ -532,6 +538,181 @@ class APIClient {
 
     async getArtifactContent(id: string): Promise<unknown> {
         return this.request(`/artifacts/${id}/content`);
+    }
+
+    // =========================================================================
+    // Experiments API
+    // =========================================================================
+
+    private mapExperiment(exp: any): Experiment {
+        return {
+            id: exp.id,
+            name: exp.name,
+            description: exp.description ?? '',
+            status: exp.status,
+            baseModel: exp.base_model ?? '',
+            datasetId: exp.dataset_id,
+            datasetVersionId: exp.dataset_version_id,
+            recipeId: exp.recipe_id,
+            hyperparameters: exp.hyperparameters ?? {},
+            metrics: {
+                loss: exp.metrics?.loss,
+                evalLoss: exp.metrics?.eval_loss,
+                perplexity: exp.metrics?.perplexity,
+                codebleu: exp.metrics?.codebleu,
+                humanevalPassAt1: exp.metrics?.humaneval_pass_at_1,
+                rougeL: exp.metrics?.rouge_l,
+                exactMatch: exp.metrics?.exact_match,
+                custom: exp.metrics?.custom ?? {},
+            },
+            tags: exp.tags ?? [],
+            artifacts: exp.artifacts ?? {},
+            jobId: exp.job_id,
+            createdAt: exp.created_at,
+            startedAt: exp.started_at,
+            completedAt: exp.completed_at,
+            durationSeconds: exp.duration_seconds,
+            error: exp.error,
+        };
+    }
+
+    async getExperiments(filters?: { status?: string; tag?: string }): Promise<Experiment[]> {
+        const params = new URLSearchParams();
+        if (filters?.status) params.append('status', filters.status);
+        if (filters?.tag) params.append('tag', filters.tag);
+        const query = params.toString();
+        const response = await this.request<any[]>(`/api/experiments${query ? `?${query}` : ''}`);
+        return response.map(exp => this.mapExperiment(exp));
+    }
+
+    async getExperiment(id: string): Promise<Experiment> {
+        const exp = await this.request<any>(`/api/experiments/${id}`);
+        return this.mapExperiment(exp);
+    }
+
+    async createExperiment(data: {
+        name: string;
+        description?: string;
+        base_model: string;
+        dataset_id?: string;
+        recipe_id?: string;
+        hyperparameters?: Record<string, unknown>;
+        tags?: string[];
+    }): Promise<Experiment> {
+        const exp = await this.request<any>('/api/experiments', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+        return this.mapExperiment(exp);
+    }
+
+    async deleteExperiment(id: string): Promise<void> {
+        return this.request(`/api/experiments/${id}`, { method: 'DELETE' });
+    }
+
+    async compareExperiments(experimentIds: string[]): Promise<ExperimentComparison> {
+        const response = await this.request<any>('/api/experiments/compare', {
+            method: 'POST',
+            body: JSON.stringify({ experiment_ids: experimentIds }),
+        });
+        return {
+            experiments: (response.experiments ?? []).map((exp: any) => this.mapExperiment(exp)),
+            metricSummary: response.metric_summary ?? {},
+        };
+    }
+
+    // =========================================================================
+    // Dataset Versions API
+    // =========================================================================
+
+    private mapDatasetVersion(v: any): DatasetVersion {
+        return {
+            id: v.id,
+            datasetId: v.dataset_id,
+            version: v.version,
+            status: v.status,
+            exampleCount: v.example_count ?? 0,
+            filtersApplied: v.filters_applied ?? {},
+            qualityStats: v.quality_stats ?? {},
+            snapshotHash: v.snapshot_hash ?? '',
+            createdAt: v.created_at,
+            parentVersionId: v.parent_version_id,
+        };
+    }
+
+    async getDatasetVersions(datasetId?: string): Promise<DatasetVersion[]> {
+        const params = new URLSearchParams();
+        if (datasetId) params.append('dataset_id', datasetId);
+        const query = params.toString();
+        const response = await this.request<any[]>(`/api/dataset-versions${query ? `?${query}` : ''}`);
+        return response.map(v => this.mapDatasetVersion(v));
+    }
+
+    async createDatasetVersion(data: {
+        dataset_id: string;
+        filters_applied?: Record<string, unknown>;
+    }): Promise<DatasetVersion> {
+        const v = await this.request<any>('/api/dataset-versions', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+        return this.mapDatasetVersion(v);
+    }
+
+    // =========================================================================
+    // Recipes API
+    // =========================================================================
+
+    private mapRecipeDefaults(d: any): RecipeDefaults {
+        return {
+            epochs: d.epochs,
+            learningRate: d.learning_rate,
+            rank: d.rank,
+            batchSize: d.batch_size,
+            usePissa: d.use_pissa,
+            gradientAccumulationSteps: d.gradient_accumulation_steps,
+            warmupRatio: d.warmup_ratio,
+            scheduler: d.scheduler,
+            maxSeqLength: d.max_seq_length,
+        };
+    }
+
+    private mapRecipe(r: any): Recipe {
+        return {
+            id: r.id,
+            name: r.name,
+            description: r.description ?? '',
+            taskType: r.task_type,
+            supportedModels: r.supported_models ?? [],
+            defaults: this.mapRecipeDefaults(r.defaults ?? {}),
+            datasetRequirements: r.dataset_requirements ?? {},
+            evalSuite: {
+                metrics: r.eval_suite?.metrics ?? [],
+                passThresholds: r.eval_suite?.pass_thresholds ?? {},
+            },
+            tags: r.tags ?? [],
+            isBuiltin: r.is_builtin ?? false,
+        };
+    }
+
+    async getRecipes(filters?: { task_type?: string; tag?: string }): Promise<Recipe[]> {
+        const params = new URLSearchParams();
+        if (filters?.task_type) params.append('task_type', filters.task_type);
+        if (filters?.tag) params.append('tag', filters.tag);
+        const query = params.toString();
+        const response = await this.request<any[]>(`/api/recipes${query ? `?${query}` : ''}`);
+        return response.map(r => this.mapRecipe(r));
+    }
+
+    async getRecipe(id: string, hardware?: string): Promise<RecipeWithDefaults> {
+        const params = new URLSearchParams();
+        if (hardware) params.append('hardware', hardware);
+        const query = params.toString();
+        const response = await this.request<any>(`/api/recipes/${encodeURIComponent(id)}${query ? `?${query}` : ''}`);
+        return {
+            recipe: this.mapRecipe(response.recipe ?? {}),
+            adjustedDefaults: this.mapRecipeDefaults(response.adjusted_defaults ?? {}),
+        };
     }
 }
 

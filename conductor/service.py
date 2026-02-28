@@ -294,6 +294,14 @@ def create_app() -> FastAPI:
     # Include data sources router
     from conductor.data_sources import router as data_sources_router
     application.include_router(data_sources_router, prefix="/api")
+
+    # Include experiments router
+    from conductor.experiments import router as experiments_router
+    application.include_router(experiments_router, prefix="/api")
+
+    # Include recipes router
+    from conductor.recipes import router as recipes_router
+    application.include_router(recipes_router, prefix="/api")
     
     return application
 

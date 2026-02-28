@@ -8,6 +8,8 @@ import { ModelsPage } from './features/models'
 import { MonitoringPage } from './features/monitoring'
 import { MissionsPage, MissionDetailPage } from './features/missions'
 import { SettingsPage } from './features/settings'
+import { ExperimentsPage } from './features/experiments'
+import { RecipesPage } from './features/recipes'
 
 function App() {
     return (
@@ -25,6 +27,8 @@ function App() {
                     <Route path="/monitoring" element={<MonitoringPage />} />
                     <Route path="/missions" element={<MissionsPage />} />
                     <Route path="/missions/:missionId" element={<MissionDetailPage />} />
+                    <Route path="/experiments" element={<ExperimentsPage />} />
+                    <Route path="/recipes" element={<RecipesPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                 </Route>
             </Routes>

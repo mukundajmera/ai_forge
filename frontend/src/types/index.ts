@@ -393,3 +393,108 @@ export interface ValidationWarning {
     message: string;
     severity: 'warning' | 'info';
 }
+
+// =============================================================================
+// Dataset Version Types
+// =============================================================================
+
+export type DatasetVersionStatus = 'draft' | 'ready' | 'archived';
+
+export interface DatasetVersion {
+    id: string;
+    datasetId: string;
+    version: number;
+    status: DatasetVersionStatus;
+    exampleCount: number;
+    filtersApplied: Record<string, unknown>;
+    qualityStats: Record<string, number>;
+    snapshotHash: string;
+    createdAt: string;
+    parentVersionId?: string;
+}
+
+// =============================================================================
+// Experiment / Run Types
+// =============================================================================
+
+export type ExperimentStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export type TaskType = 'instruction_tuning' | 'domain_adaptation' | 'code_specialization' | 'qa_finetuning';
+
+export type HardwareProfile = 'low' | 'medium' | 'high';
+
+export interface EvalMetrics {
+    loss?: number;
+    evalLoss?: number;
+    perplexity?: number;
+    codebleu?: number;
+    humanevalPassAt1?: number;
+    rougeL?: number;
+    exactMatch?: number;
+    custom: Record<string, number>;
+}
+
+export interface Experiment {
+    id: string;
+    name: string;
+    description: string;
+    status: ExperimentStatus;
+    baseModel: string;
+    datasetId?: string;
+    datasetVersionId?: string;
+    recipeId?: string;
+    hyperparameters: Record<string, unknown>;
+    metrics: EvalMetrics;
+    tags: string[];
+    artifacts: Record<string, string>;
+    jobId?: string;
+    createdAt: string;
+    startedAt?: string;
+    completedAt?: string;
+    durationSeconds?: number;
+    error?: string;
+}
+
+export interface ExperimentComparison {
+    experiments: Experiment[];
+    metricSummary: Record<string, Record<string, number | null>>;
+}
+
+// =============================================================================
+// Training Recipe Types
+// =============================================================================
+
+export interface RecipeDefaults {
+    epochs: number;
+    learningRate: number;
+    rank: number;
+    batchSize: number;
+    usePissa: boolean;
+    gradientAccumulationSteps: number;
+    warmupRatio: number;
+    scheduler: string;
+    maxSeqLength: number;
+}
+
+export interface EvalSuiteConfig {
+    metrics: string[];
+    passThresholds: Record<string, number>;
+}
+
+export interface Recipe {
+    id: string;
+    name: string;
+    description: string;
+    taskType: TaskType;
+    supportedModels: string[];
+    defaults: RecipeDefaults;
+    datasetRequirements: Record<string, unknown>;
+    evalSuite: EvalSuiteConfig;
+    tags: string[];
+    isBuiltin: boolean;
+}
+
+export interface RecipeWithDefaults {
+    recipe: Recipe;
+    adjustedDefaults: RecipeDefaults;
+}

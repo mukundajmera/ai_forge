@@ -8,6 +8,13 @@ import type {
     DataSource,
     TrainingDataset,
     TrainingExample,
+    Experiment,
+    ExperimentComparison,
+    DatasetVersion,
+    Recipe,
+    RecipeDefaults,
+    RecipeWithDefaults,
+    EvalMetrics,
 } from '@/types';
 
 // =============================================================================
@@ -186,4 +193,11 @@ export type {
     DataSource,
     TrainingDataset,
     TrainingExample,
+    Experiment,
+    ExperimentComparison,
+    DatasetVersion,
+    Recipe,
+    RecipeDefaults,
+    RecipeWithDefaults,
+    EvalMetrics,
 };

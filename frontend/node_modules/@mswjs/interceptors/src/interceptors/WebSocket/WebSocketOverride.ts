@@ -1,11 +1,12 @@
 import { invariant } from 'outvariant'
+import { DeferredPromise } from '@open-draft/deferred-promise'
 import type { WebSocketData } from './WebSocketTransport'
 import { bindEvent } from './utils/bindEvent'
 import { CloseEvent } from './utils/events'
-import { DeferredPromise } from '@open-draft/deferred-promise'
+import { resolveWebSocketUrl } from '../../utils/resolveWebSocketUrl'
 
 export type WebSocketEventListener<
-  EventType extends WebSocketEventMap[keyof WebSocketEventMap] = Event
+  EventType extends WebSocketEventMap[keyof WebSocketEventMap] = Event,
 > = (this: WebSocket, event: EventType) => void
 
 const WEBSOCKET_CLOSE_CODE_RANGE_ERROR =
@@ -29,7 +30,7 @@ export class WebSocketOverride extends EventTarget implements WebSocket {
   public protocol: string
   public extensions: string
   public binaryType: BinaryType
-  public readyState: number
+  public readyState: WebSocket['readyState']
   public bufferedAmount: number
 
   private _onopen: WebSocketEventListener | null = null
@@ -44,7 +45,7 @@ export class WebSocketOverride extends EventTarget implements WebSocket {
 
   constructor(url: string | URL, protocols?: string | Array<string>) {
     super()
-    this.url = url.toString()
+    this.url = resolveWebSocketUrl(url)
     this.protocol = ''
     this.extensions = ''
     this.binaryType = 'blob'
@@ -62,8 +63,8 @@ export class WebSocketOverride extends EventTarget implements WebSocket {
         typeof protocols === 'string'
           ? protocols
           : Array.isArray(protocols) && protocols.length > 0
-          ? protocols[0]
-          : ''
+            ? protocols[0]
+            : ''
 
       /**
        * @note Check that nothing has prevented this connection
