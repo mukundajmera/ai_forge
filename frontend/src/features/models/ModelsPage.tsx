@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useModels } from '@/lib/hooks';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -16,6 +17,7 @@ interface ModelsPageProps {
 export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
     const { data: models, isLoading, error } = useModels();
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
+    const navigate = useNavigate();
 
     if (isLoading) {
         return (
@@ -59,7 +61,7 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
                     <h1 className="text-2xl font-bold">Models</h1>
                     <p className="text-muted">Manage and deploy your fine-tuned models</p>
                 </div>
-                <Button variant="primary">
+                <Button intent="primary">
                     <Rocket className="w-4 h-4 mr-2" />
                     Deploy to Ollama
                 </Button>
@@ -115,7 +117,7 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
                         <p className="text-sm text-muted mb-4">
                             Complete a training job to create your first model
                         </p>
-                        <Button variant="secondary" href="/jobs/new">
+                        <Button intent="secondary" onClick={() => navigate('/jobs/new')}>
                             Start Training
                         </Button>
                     </Card>

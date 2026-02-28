@@ -24,6 +24,7 @@ export {
 // =============================================================================
 
 import { apiClient } from '@/api/client';
+import type { FineTuneConfig } from '@/api/types';
 import type { Model } from '@/types';
 
 export function useDatasets() {
@@ -36,7 +37,7 @@ export function useDatasets() {
 export function useStartFineTune() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: apiClient.startFineTune.bind(apiClient),
+        mutationFn: (config: FineTuneConfig) => apiClient.startFineTune(config),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['jobs'] });
         },

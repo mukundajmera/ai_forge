@@ -182,11 +182,13 @@ export function JobsListPage({ isCreating = false }: { isCreating?: boolean }) {
                                     </td>
                                     <td>
                                         <div className="table-actions">
-                                            <Link to={`/jobs/${job.id}`}>
-                                                <button className="btn btn-ghost btn-icon">
-                                                    <ChevronRight size={14} />
-                                                </button>
-                                            </Link>
+                                            <button
+                                                className="btn btn-ghost btn-icon"
+                                                aria-label="View job details"
+                                                onClick={() => navigate(`/jobs/${job.id}`)}
+                                            >
+                                                <ChevronRight size={14} />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -294,15 +296,6 @@ export function JobsListPage({ isCreating = false }: { isCreating?: boolean }) {
         .status-icon.success { color: var(--success-500); }
         .status-icon.error { color: var(--error-500); }
         .status-icon.muted { color: var(--text-muted); }
-      `}</style>
-            <style>{`
-        .jobs-page {
-          padding: var(--space-8);
-          max-width: 1400px;
-        }
-
-        /* ... existing styles ... */
-        /* Truncated for brevity, assuming existing styles remain */
       `}</style>
 
             {isCreating && (

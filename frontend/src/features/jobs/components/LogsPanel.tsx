@@ -20,11 +20,35 @@ const LOG_LEVEL_COLORS: Record<LogEntry['level'], string> = {
 };
 
 export function LogsPanel({ jobId, height = 384 }: LogsPanelProps) {
-    const { logs, isConnected, clearLogs, downloadLogs } = useLogStream(jobId);
+    const { logs, isConnected } = useLogStream(jobId);
     const [autoScroll, setAutoScroll] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [clearedAt, setClearedAt] = useState<string | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Support clearing logs visually (hide logs received before clear time)
+    const visibleLogs = useMemo(() => {
+        if (!clearedAt) return logs;
+        return logs.filter((log) => log.timestamp > clearedAt);
+    }, [logs, clearedAt]);
+
+    const clearLogs = () => setClearedAt(new Date().toISOString());
+
+    const downloadLogs = () => {
+        const content = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `job-${jobId}-logs.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 100);
+    };
 
     // Auto-scroll to bottom when new logs arrive
     useEffect(() => {
@@ -47,15 +71,15 @@ export function LogsPanel({ jobId, height = 384 }: LogsPanelProps) {
 
     // Filter logs by search query
     const filteredLogs = useMemo(() => {
-        if (!searchQuery.trim()) return logs;
+        if (!searchQuery.trim()) return visibleLogs;
 
         const query = searchQuery.toLowerCase();
-        return logs.filter(
+        return visibleLogs.filter(
             (log) =>
                 log.message.toLowerCase().includes(query) ||
                 log.level.toLowerCase().includes(query)
         );
-    }, [logs, searchQuery]);
+    }, [visibleLogs, searchQuery]);
 
     // Resume auto-scroll
     const resumeAutoScroll = () => {

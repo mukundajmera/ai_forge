@@ -3,7 +3,7 @@
 // =============================================================================
 
 export type MissionStatus = 'active' | 'pending_approval' | 'completed' | 'failed' | 'approved' | 'rejected';
-export type MissionType = 'retrain_suggestion' | 'deployment_approval' | 'quality_alert' | 'performance_drift';
+export type MissionType = 'retrain_suggestion' | 'deployment_approval' | 'quality_alert' | 'performance_drift' | 'data_quality_issue';
 export type MissionPriority = 'low' | 'medium' | 'high';
 export type ArtifactType = 'chart' | 'report' | 'log' | 'dashboard';
 
@@ -32,6 +32,7 @@ export interface MissionApproval {
     rejectedAt?: string;
     rejectedBy?: string;
     reason?: string;
+    rejectionReason?: string;
 }
 
 export interface MissionReasoning {
