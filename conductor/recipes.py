@@ -4,6 +4,7 @@ This module provides REST API endpoints for:
 - Listing built-in and custom training recipes
 - Getting recipe details with hardware-aware defaults
 - Creating custom recipes
+- Deleting custom recipes
 
 Example:
     >>> from conductor.recipes import router as recipes_router
