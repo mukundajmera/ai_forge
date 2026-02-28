@@ -157,7 +157,7 @@ async def update_experiment(
     if "metrics" in update_data:
         existing_metrics = experiment.metrics.model_dump()
         existing_metrics.update(update_data["metrics"])
-        update_data["metrics"] = existing_metrics
+        update_data["metrics"] = EvalMetrics(**existing_metrics)
 
     for key, value in update_data.items():
         setattr(experiment, key, value)
