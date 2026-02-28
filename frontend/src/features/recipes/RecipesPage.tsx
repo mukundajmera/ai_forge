@@ -46,8 +46,6 @@ export function RecipesPage() {
     )
     const { data: recipeDetail } = useRecipe(selectedRecipeId ?? undefined, hardware)
 
-    const filteredRecipes = recipes
-
     return (
         <div className="recipes-page">
             <header className="page-header">
@@ -95,7 +93,7 @@ export function RecipesPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: selectedRecipeId ? '1fr 1fr' : '1fr', gap: 'var(--space-6)' }}>
                     {/* Recipe Cards */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                        {filteredRecipes.map(recipe => (
+                        {recipes.map(recipe => (
                             <div
                                 key={recipe.id}
                                 onClick={() => setSelectedRecipeId(recipe.id === selectedRecipeId ? null : recipe.id)}

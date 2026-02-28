@@ -194,10 +194,10 @@ async def compare_experiments(
             )
         experiments.append(Experiment(**data))
 
-    # Build metric summary
+    # Build metric summary (dynamically from EvalMetrics model fields)
     metric_keys = [
-        "loss", "eval_loss", "perplexity", "codebleu",
-        "humaneval_pass_at_1", "rouge_l", "exact_match",
+        k for k, v in EvalMetrics.model_fields.items()
+        if k != "custom"
     ]
     metric_summary: dict[str, dict[str, Optional[float]]] = {}
     for key in metric_keys:
