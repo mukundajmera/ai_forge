@@ -21,6 +21,11 @@ import type {
     ModelInfo,
     SystemStatus,
     HealthCheck,
+    Experiment,
+    ExperimentComparison,
+    DatasetVersion,
+    Recipe,
+    RecipeWithDefaults,
 } from './types';
 
 import type {
@@ -532,6 +537,84 @@ class APIClient {
 
     async getArtifactContent(id: string): Promise<unknown> {
         return this.request(`/artifacts/${id}/content`);
+    }
+
+    // =========================================================================
+    // Experiments API
+    // =========================================================================
+
+    async getExperiments(filters?: { status?: string; tag?: string }): Promise<Experiment[]> {
+        const params = new URLSearchParams();
+        if (filters?.status) params.append('status', filters.status);
+        if (filters?.tag) params.append('tag', filters.tag);
+        const query = params.toString();
+        return this.request<Experiment[]>(`/api/experiments${query ? `?${query}` : ''}`);
+    }
+
+    async getExperiment(id: string): Promise<Experiment> {
+        return this.request<Experiment>(`/api/experiments/${id}`);
+    }
+
+    async createExperiment(data: {
+        name: string;
+        description?: string;
+        base_model: string;
+        dataset_id?: string;
+        recipe_id?: string;
+        hyperparameters?: Record<string, unknown>;
+        tags?: string[];
+    }): Promise<Experiment> {
+        return this.request<Experiment>('/api/experiments', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteExperiment(id: string): Promise<void> {
+        return this.request(`/api/experiments/${id}`, { method: 'DELETE' });
+    }
+
+    async compareExperiments(experimentIds: string[]): Promise<ExperimentComparison> {
+        return this.request<ExperimentComparison>('/api/experiments/compare', {
+            method: 'POST',
+            body: JSON.stringify({ experiment_ids: experimentIds }),
+        });
+    }
+
+    // =========================================================================
+    // Dataset Versions API
+    // =========================================================================
+
+    async getDatasetVersions(datasetId?: string): Promise<DatasetVersion[]> {
+        const params = datasetId ? `?dataset_id=${datasetId}` : '';
+        return this.request<DatasetVersion[]>(`/api/dataset-versions${params}`);
+    }
+
+    async createDatasetVersion(data: {
+        dataset_id: string;
+        filters_applied?: Record<string, unknown>;
+    }): Promise<DatasetVersion> {
+        return this.request<DatasetVersion>('/api/dataset-versions', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    // =========================================================================
+    // Recipes API
+    // =========================================================================
+
+    async getRecipes(filters?: { task_type?: string; tag?: string }): Promise<Recipe[]> {
+        const params = new URLSearchParams();
+        if (filters?.task_type) params.append('task_type', filters.task_type);
+        if (filters?.tag) params.append('tag', filters.tag);
+        const query = params.toString();
+        return this.request<Recipe[]>(`/api/recipes${query ? `?${query}` : ''}`);
+    }
+
+    async getRecipe(id: string, hardware?: string): Promise<RecipeWithDefaults> {
+        const params = hardware ? `?hardware=${hardware}` : '';
+        return this.request<RecipeWithDefaults>(`/api/recipes/${id}${params}`);
     }
 }
 
