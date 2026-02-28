@@ -77,10 +77,14 @@ export function JobDetailPage() {
   }
 
   const handleRerun = async (overrides?: Record<string, unknown>) => {
+    if (!job.datasetId) {
+      console.error('Cannot rerun job: no dataset ID available')
+      return
+    }
     try {
       const config = {
         projectName: job.projectName,
-        datasetId: job.datasetId || 'ds-1',
+        datasetId: job.datasetId,
         baseModel: overrides?.baseModel as string || job.baseModel,
         epochs: job.epochs || 3,
         learningRate: job.learningRate || 0.0001,

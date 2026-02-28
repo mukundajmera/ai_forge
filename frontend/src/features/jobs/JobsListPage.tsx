@@ -182,11 +182,13 @@ export function JobsListPage({ isCreating = false }: { isCreating?: boolean }) {
                                     </td>
                                     <td>
                                         <div className="table-actions">
-                                            <Link to={`/jobs/${job.id}`}>
-                                                <button className="btn btn-ghost btn-icon" aria-label="View job details">
-                                                    <ChevronRight size={14} />
-                                                </button>
-                                            </Link>
+                                            <button
+                                                className="btn btn-ghost btn-icon"
+                                                aria-label="View job details"
+                                                onClick={() => navigate(`/jobs/${job.id}`)}
+                                            >
+                                                <ChevronRight size={14} />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>

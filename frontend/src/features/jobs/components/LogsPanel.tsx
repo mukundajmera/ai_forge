@@ -42,8 +42,12 @@ export function LogsPanel({ jobId, height = 384 }: LogsPanelProps) {
         const a = document.createElement('a');
         a.href = url;
         a.download = `job-${jobId}-logs.txt`;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 0);
     };
 
     // Auto-scroll to bottom when new logs arrive

@@ -56,11 +56,10 @@ describe('ModelsPage', () => {
 
         renderWithProviders(<ModelsPage />);
 
-        const startTrainingLink = await screen.findByText('Start Training');
-        expect(startTrainingLink).toBeInTheDocument();
-        // Should be wrapped in a Link to /jobs/new
-        const link = startTrainingLink.closest('a');
-        expect(link).toHaveAttribute('href', '/jobs/new');
+        const startTrainingButton = await screen.findByText('Start Training');
+        expect(startTrainingButton).toBeInTheDocument();
+        // Button navigates via onClick + useNavigate, not a Link wrapper
+        expect(startTrainingButton.closest('button')).toBeTruthy();
     });
 
     it('renders Deploy to Ollama button when models load', async () => {
