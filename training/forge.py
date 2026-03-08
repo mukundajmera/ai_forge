@@ -740,7 +740,7 @@ class FineTuneTrainer:
                 try:
                     import bitsandbytes as bnb  # type: ignore  # noqa: F401
                     bnb_available = True
-                except Exception:
+                except ImportError:
                     bnb_available = False
             if not (use_cuda and bnb_available):
                 logger.warning(
