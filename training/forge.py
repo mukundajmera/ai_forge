@@ -445,6 +445,14 @@ class FineTuneTrainer:
             if self.config.hardware.bf16:
                 logger.info("MPS detected: Disabling bf16 (not well-supported on MPS)")
                 self.config.hardware.bf16 = False
+            # adamw_8bit requires bitsandbytes which doesn't work on MPS
+            if self.config.training.optimizer == OptimizerType.ADAMW_8BIT:
+                logger.info("MPS detected: Switching optimizer from adamw_8bit to adamw")
+                self.config.training.optimizer = OptimizerType.ADAMW
+            # Disable 4-bit loading on MPS
+            if self.config.model.load_in_4bit:
+                logger.info("MPS detected: Disabling 4-bit loading (bitsandbytes not supported)")
+                self.config.model.load_in_4bit = False
     
     def add_callback(self, callback: TrainerCallback) -> None:
         """Add a training callback."""
@@ -526,9 +534,9 @@ class FineTuneTrainer:
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         
-        # Quantization config
+        # Quantization config — use model.load_in_4bit as single source of truth
         quant_config = None
-        load_in_4bit = self.config.quantization.bits == 4
+        load_in_4bit = self.config.model.load_in_4bit
         
         # Check for MPS/CPU - bitsandbytes 4-bit quantization only works on CUDA
         if self.device in ("mps", "cpu") and load_in_4bit:
@@ -563,7 +571,7 @@ class FineTuneTrainer:
             quantization_config=quant_config,
             device_map=device_map,
             trust_remote_code=self.config.model.trust_remote_code,
-            dtype=model_dtype,
+            torch_dtype=model_dtype,
         )
         
         tokenizer = AutoTokenizer.from_pretrained(
@@ -718,9 +726,30 @@ class FineTuneTrainer:
             OptimizerType.SGDM: "sgd",
             OptimizerType.ADAFACTOR: "adafactor",
         }
-        training_args_dict["optim"] = optim_map.get(
-            self.config.training.optimizer, "adamw_torch"
-        )
+        # Resolve requested optimizer with a safe fallback
+        requested_optimizer = self.config.training.optimizer
+        optim = optim_map.get(requested_optimizer, "adamw_torch")
+
+        # Ensure 8-bit optimizer is only used when supported
+        if optim == "adamw_bnb_8bit":
+            # bitsandbytes requires CUDA; fall back on non-CUDA or if import fails
+            device_str = str(self.device)
+            use_cuda = device_str.startswith("cuda")
+            bnb_available = False
+            if use_cuda:
+                try:
+                    import bitsandbytes as bnb  # type: ignore  # noqa: F401
+                    bnb_available = True
+                except Exception:
+                    bnb_available = False
+            if not (use_cuda and bnb_available):
+                logger.warning(
+                    "Requested 8-bit AdamW optimizer but bitsandbytes is not available "
+                    "or device is not CUDA; falling back to 'adamw_torch'."
+                )
+                optim = "adamw_torch"
+
+        training_args_dict["optim"] = optim
         
         # Ensure CPU training is properly configured
         if self.device == "cpu":
