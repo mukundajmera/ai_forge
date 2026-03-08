@@ -6,7 +6,7 @@ from pathlib import Path
 # Add current directory to path
 sys.path.append(os.getcwd())
 
-from training.schemas import FineTuneConfig, TrainingConfig, ModelConfig, CheckpointConfig, LoggingConfig, PiSSAConfig, EvaluationConfig, MemoryConfig
+from training.schemas import FineTuneConfig, TrainingConfig, ModelConfig, CheckpointConfig, LoggingConfig, PiSSAConfig, EvaluationConfig, MemoryConfig, HardwareConfig
 from training.forge import FineTuneTrainer
 
 def test_training_dryrun():
@@ -25,7 +25,6 @@ def test_training_dryrun():
             per_device_train_batch_size=1,
             gradient_accumulation_steps=1,
             learning_rate=1e-4,
-            use_cpu=False # Allow auto-detect (should use MPS)
         ),
         pissa=PiSSAConfig(
             target_modules=["c_attn"] 
@@ -43,7 +42,10 @@ def test_training_dryrun():
         ),
         memory=MemoryConfig(
              gradient_checkpointing=False
-        )
+        ),
+        hardware=HardwareConfig(
+            device="auto",
+        ),
     )
     
     # 2. Setup Dummy Dataset
