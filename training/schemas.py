@@ -333,13 +333,12 @@ class FineTuneConfig(BaseModel):
     
     def get_training_arguments(self) -> dict[str, Any]:
         """Convert to HuggingFace TrainingArguments format."""
-        return {
+        args = {
             "output_dir": self.logging.output_dir,
             "run_name": self.logging.run_name,
             "learning_rate": self.training.learning_rate,
             "lr_scheduler_type": self.training.lr_scheduler_type.value,
             "warmup_steps": self.training.warmup_steps,
-            "warmup_ratio": self.training.warmup_ratio,
             "weight_decay": self.training.weight_decay,
             "max_grad_norm": self.training.max_grad_norm,
             "per_device_train_batch_size": self.training.per_device_train_batch_size,
@@ -363,3 +362,7 @@ class FineTuneConfig(BaseModel):
             "dataloader_num_workers": self.hardware.dataloader_num_workers,
             "gradient_checkpointing": self.memory.gradient_checkpointing,
         }
+        # Only include warmup_ratio if warmup_steps is 0 (avoids deprecation warning)
+        if self.training.warmup_steps == 0 and self.training.warmup_ratio > 0:
+            args["warmup_ratio"] = self.training.warmup_ratio
+        return args

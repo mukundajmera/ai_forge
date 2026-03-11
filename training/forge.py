@@ -391,6 +391,9 @@ class FineTuneTrainer:
         self.config = config
         self.device = detect_device() if config.hardware.device == "auto" else config.hardware.device
         
+        # Auto-adjust config for CPU compatibility
+        self._adjust_config_for_device()
+        
         # Model components (initialized by load_model)
         self.model = None
         self.tokenizer = None
@@ -411,6 +414,45 @@ class FineTuneTrainer:
         self.eval_history: list[dict] = []
         
         logger.info(f"FineTuneTrainer initialized on device: {self.device}")
+    
+    def _adjust_config_for_device(self) -> None:
+        """Auto-adjust configuration for the detected device.
+        
+        Ensures settings are compatible with the target device:
+        - CPU: Disables bf16/fp16, uses standard adamw optimizer
+        - MPS: Disables bf16 (not well-supported)
+        """
+        from training.schemas import OptimizerType
+        
+        if self.device == "cpu":
+            # CPU does not support bf16 or fp16 mixed precision well
+            if self.config.hardware.bf16:
+                logger.info("CPU detected: Disabling bf16 (not supported on CPU)")
+                self.config.hardware.bf16 = False
+            if self.config.hardware.fp16:
+                logger.info("CPU detected: Disabling fp16 (not recommended on CPU)")
+                self.config.hardware.fp16 = False
+            # adamw_8bit requires bitsandbytes which doesn't work on CPU
+            if self.config.training.optimizer == OptimizerType.ADAMW_8BIT:
+                logger.info("CPU detected: Switching optimizer from adamw_8bit to adamw")
+                self.config.training.optimizer = OptimizerType.ADAMW
+            # Disable 4-bit loading on CPU
+            if self.config.model.load_in_4bit:
+                logger.info("CPU detected: Disabling 4-bit loading (bitsandbytes not supported)")
+                self.config.model.load_in_4bit = False
+        elif self.device == "mps":
+            # MPS does not support bf16 well
+            if self.config.hardware.bf16:
+                logger.info("MPS detected: Disabling bf16 (not well-supported on MPS)")
+                self.config.hardware.bf16 = False
+            # adamw_8bit requires bitsandbytes which doesn't work on MPS
+            if self.config.training.optimizer == OptimizerType.ADAMW_8BIT:
+                logger.info("MPS detected: Switching optimizer from adamw_8bit to adamw")
+                self.config.training.optimizer = OptimizerType.ADAMW
+            # Disable 4-bit loading on MPS
+            if self.config.model.load_in_4bit:
+                logger.info("MPS detected: Disabling 4-bit loading (bitsandbytes not supported)")
+                self.config.model.load_in_4bit = False
     
     def add_callback(self, callback: TrainerCallback) -> None:
         """Add a training callback."""
@@ -492,13 +534,16 @@ class FineTuneTrainer:
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         
-        # Quantization config
+        # Quantization config — use model.load_in_4bit as single source of truth
         quant_config = None
-        load_in_4bit = self.config.quantization.bits == 4
+        load_in_4bit = self.config.model.load_in_4bit
         
-        # Check for MPS
-        if self.device == "mps" and load_in_4bit:
-            logger.warning("⚠️ Apple MPS detected: Disabling 4-bit quantization (bitsandbytes not supported). Using native precision.")
+        # Check for MPS/CPU - bitsandbytes 4-bit quantization only works on CUDA
+        if self.device in ("mps", "cpu") and load_in_4bit:
+            logger.warning(
+                f"⚠️ {self.device.upper()} detected: Disabling 4-bit quantization "
+                "(bitsandbytes not supported on this device). Using native precision."
+            )
             load_in_4bit = False
         
         if load_in_4bit:
@@ -509,13 +554,24 @@ class FineTuneTrainer:
                 bnb_4bit_compute_dtype=getattr(torch, self.config.quantization.compute_dtype),
             )
         
+        # Determine device_map and torch_dtype based on device
+        if self.device == "mps":
+            device_map = self.device
+            model_dtype = torch.float16
+        elif self.device == "cpu":
+            device_map = "cpu"
+            model_dtype = torch.float32
+        else:
+            device_map = "auto"
+            model_dtype = "auto"
+        
         # Load model
         model = AutoModelForCausalLM.from_pretrained(
             self.config.model.base_model,
             quantization_config=quant_config,
-            device_map="auto" if self.device != "mps" else self.device,
+            device_map=device_map,
             trust_remote_code=self.config.model.trust_remote_code,
-            torch_dtype=torch.float16 if self.device == "mps" else "auto",
+            torch_dtype=model_dtype,
         )
         
         tokenizer = AutoTokenizer.from_pretrained(
@@ -659,6 +715,45 @@ class FineTuneTrainer:
         if eval_dataset is None:
             logger.warning("No evaluation dataset provided. Disabling evaluation.")
             training_args_dict["eval_strategy"] = "no"
+            # load_best_model_at_end requires eval; disable it when eval is off
+            training_args_dict["load_best_model_at_end"] = False
+        
+        # Map optimizer config to HuggingFace optim string
+        from training.schemas import OptimizerType
+        optim_map = {
+            OptimizerType.ADAMW: "adamw_torch",
+            OptimizerType.ADAMW_8BIT: "adamw_bnb_8bit",
+            OptimizerType.SGDM: "sgd",
+            OptimizerType.ADAFACTOR: "adafactor",
+        }
+        # Resolve requested optimizer with a safe fallback
+        requested_optimizer = self.config.training.optimizer
+        optim = optim_map.get(requested_optimizer, "adamw_torch")
+
+        # Ensure 8-bit optimizer is only used when supported
+        if optim == "adamw_bnb_8bit":
+            # bitsandbytes requires CUDA; fall back on non-CUDA or if import fails
+            device_str = str(self.device)
+            use_cuda = device_str.startswith("cuda")
+            bnb_available = False
+            if use_cuda:
+                try:
+                    import bitsandbytes as bnb  # type: ignore  # noqa: F401
+                    bnb_available = True
+                except ImportError:
+                    bnb_available = False
+            if not (use_cuda and bnb_available):
+                logger.warning(
+                    "Requested 8-bit AdamW optimizer but bitsandbytes is not available "
+                    "or device is not CUDA; falling back to 'adamw_torch'."
+                )
+                optim = "adamw_torch"
+
+        training_args_dict["optim"] = optim
+        
+        # Ensure CPU training is properly configured
+        if self.device == "cpu":
+            training_args_dict["use_cpu"] = True
             
         training_args = TrainingArguments(**training_args_dict)
         

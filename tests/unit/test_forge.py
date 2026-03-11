@@ -747,6 +747,103 @@ class TestDPOConfiguration:
         assert trainer.config.dpo.enabled is False
 
 
+class TestCPUDeviceAdjustment:
+    """Tests for automatic CPU config adjustments."""
+
+    def test_cpu_disables_bf16(self) -> None:
+        """Test that CPU device auto-disables bf16."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig, HardwareConfig
+
+        config = FineTuneConfig(hardware=HardwareConfig(device="cpu", bf16=True))
+        trainer = FineTuneTrainer(config)
+
+        assert trainer.device == "cpu"
+        assert config.hardware.bf16 is False
+
+    def test_cpu_disables_fp16(self) -> None:
+        """Test that CPU device auto-disables fp16."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig, HardwareConfig
+
+        config = FineTuneConfig(hardware=HardwareConfig(device="cpu", fp16=True))
+        trainer = FineTuneTrainer(config)
+
+        assert config.hardware.fp16 is False
+
+    def test_cpu_switches_optimizer(self) -> None:
+        """Test that CPU device switches adamw_8bit to adamw."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig, HardwareConfig, TrainingConfig
+
+        config = FineTuneConfig(
+            hardware=HardwareConfig(device="cpu"),
+            training=TrainingConfig(optimizer=OptimizerType.ADAMW_8BIT),
+        )
+        trainer = FineTuneTrainer(config)
+
+        assert config.training.optimizer == OptimizerType.ADAMW
+
+    def test_cpu_disables_4bit_loading(self) -> None:
+        """Test that CPU device disables 4-bit model loading."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig, HardwareConfig, ModelConfig
+
+        config = FineTuneConfig(
+            hardware=HardwareConfig(device="cpu"),
+            model=ModelConfig(load_in_4bit=True),
+        )
+        trainer = FineTuneTrainer(config)
+
+        assert config.model.load_in_4bit is False
+
+    def test_cpu_preserves_valid_optimizer(self) -> None:
+        """Test that CPU device does not change valid optimizer."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig, HardwareConfig, TrainingConfig
+
+        config = FineTuneConfig(
+            hardware=HardwareConfig(device="cpu"),
+            training=TrainingConfig(optimizer=OptimizerType.ADAFACTOR),
+        )
+        trainer = FineTuneTrainer(config)
+
+        assert config.training.optimizer == OptimizerType.ADAFACTOR
+
+    @patch("training.forge.detect_device", return_value="cpu")
+    def test_auto_detect_cpu_adjusts_config(self, mock_detect) -> None:
+        """Test that auto-detected CPU properly adjusts config."""
+        from training.forge import FineTuneTrainer
+        from training.schemas import FineTuneConfig
+
+        config = FineTuneConfig()  # default device="auto", bf16=True, adamw_8bit
+        trainer = FineTuneTrainer(config)
+
+        assert trainer.device == "cpu"
+        assert config.hardware.bf16 is False
+        assert config.training.optimizer == OptimizerType.ADAMW
+        assert config.model.load_in_4bit is False
+
+    def test_get_training_arguments_warmup_ratio_excluded(self) -> None:
+        """Test warmup_ratio excluded when warmup_steps > 0."""
+        config = FineTuneConfig()
+        config.training.warmup_steps = 100
+        config.training.warmup_ratio = 0.03
+
+        args = config.get_training_arguments()
+        assert "warmup_ratio" not in args
+        assert args["warmup_steps"] == 100
+
+    def test_get_training_arguments_warmup_ratio_included_when_steps_zero(self) -> None:
+        """Test warmup_ratio included when warmup_steps = 0."""
+        config = FineTuneConfig()
+        config.training.warmup_steps = 0
+        config.training.warmup_ratio = 0.1
+
+        args = config.get_training_arguments()
+        assert args["warmup_ratio"] == 0.1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
