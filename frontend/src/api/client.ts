@@ -261,6 +261,21 @@ class APIClient {
     // Jobs API
     // =========================================================================
 
+    private calculateDuration(startedAt?: string, completedAt?: string): string | undefined {
+        if (!startedAt) return undefined;
+        const end = completedAt ? new Date(completedAt) : new Date();
+        const start = new Date(startedAt);
+        const diffSeconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+        if (diffSeconds < 0) return undefined;
+        
+        const mins = Math.floor(diffSeconds / 60);
+        const secs = diffSeconds % 60;
+        if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+        const hours = Math.floor(mins / 60);
+        const remainingMins = mins % 60;
+        return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+    }
+
     async getJobs(): Promise<TrainingJob[]> {
         const response = await this.request<any[]>('/v1/fine-tune');
         // Map backend snake_case to frontend camelCase
@@ -284,6 +299,8 @@ class APIClient {
             createdAt: job.created_at,
             startedAt: job.started_at,
             completedAt: job.completed_at,
+            duration: this.calculateDuration(job.started_at, job.completed_at),
+            eta: job.status === 'running' ? 'computing...' : undefined,
         }));
     }
 
@@ -310,6 +327,8 @@ class APIClient {
             createdAt: job.created_at,
             startedAt: job.started_at,
             completedAt: job.completed_at,
+            duration: this.calculateDuration(job.started_at, job.completed_at),
+            eta: job.status === 'running' ? 'computing...' : undefined,
         };
     }
 
@@ -417,7 +436,7 @@ class APIClient {
     }
 
     async deleteModel(id: string): Promise<void> {
-        return this.request(`/models/${id}`, { method: 'DELETE' });
+        return this.request(`/v1/models/${encodeURIComponent(id)}`, { method: 'DELETE' });
     }
 
     // =========================================================================

@@ -87,6 +87,9 @@ const PRESETS: Record<string, PresetConfig> = {
 // Component
 // =============================================================================
 
+// Available base models for fine-tuning
+// We get models directly from the local Ollama instance
+
 interface NewFineTuneDialogProps {
     open: boolean;
     onClose: () => void;
@@ -100,9 +103,16 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
     const [step, setStep] = useState(1);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const { data: datasets, isLoading: datasetsLoading } = useDatasets();
-    const { data: models, isLoading: modelsLoading } = useModels();
-    console.log('NewFineTuneDialog: Datasets:', datasets, 'Models:', models);
+    const { data: models } = useModels();
+    console.log('NewFineTuneDialog: Datasets:', datasets);
     const startFineTune = useStartFineTune();
+
+    // Local Ollama models
+    const combinedModels = (models || []).map(m => ({
+        id: m.id,
+        size: m.size || 0,
+        quantization: m.quantization || 'unknown'
+    })).filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
 
     const {
         register,
@@ -115,7 +125,7 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
         defaultValues: {
             projectName: '',
             datasetId: preselectedDatasetId || '',
-            baseModel: 'Llama-3.2-3B',
+            baseModel: '',
             preset: 'balanced',
         },
     });
@@ -138,14 +148,14 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
     const onSubmit = async (data: FineTuneFormData) => {
         try {
             const config = {
-                projectName: data.projectName,
-                baseModel: data.baseModel,
-                datasetId: data.datasetId,
+                project_name: data.projectName,
+                base_model: data.baseModel,
+                dataset_id: data.datasetId,
                 epochs: data.epochs || preset.epochs,
-                learningRate: data.learningRate || preset.lr,
+                learning_rate: data.learningRate || preset.lr,
                 rank: data.rank || preset.rank,
-                batchSize: data.batchSize || preset.batchSize,
-                method: 'pissa' as const,
+                batch_size: data.batchSize || preset.batchSize,
+                use_pissa: true,
             };
 
             const result = await startFineTune.mutateAsync(config);
@@ -279,32 +289,28 @@ export function NewFineTuneDialog({ open, onClose }: NewFineTuneDialogProps) {
                         {/* Base Model Selection */}
                         <div className="form-group">
                             <label className="form-label">Base Model</label>
-                            {modelsLoading ? (
-                                <div className="loading-placeholder">Loading models...</div>
-                            ) : (
-                                <div className="radio-cards">
-                                    {models?.map((model) => (
-                                        <label
-                                            key={model.id}
-                                            className={`radio-card ${selectedBaseModel === model.id ? 'selected' : ''}`}
-                                        >
-                                            <input
-                                                type="radio"
-                                                {...register('baseModel')}
-                                                value={model.id}
-                                            />
-                                            <div className="card-content">
-                                                <div className="card-title">{model.id}</div>
-                                                <div className="card-meta">
-                                                    <span>{(model.size / (1024 * 1024 * 1024)).toFixed(1)} GB</span>
-                                                    <span className="separator">•</span>
-                                                    <span>{model.quantization || 'Q4_K_M'}</span>
-                                                </div>
+                            <div className="radio-cards">
+                                {combinedModels.map((model) => (
+                                    <label
+                                        key={model.id}
+                                        className={`radio-card ${selectedBaseModel === model.id ? 'selected' : ''}`}
+                                    >
+                                        <input
+                                            type="radio"
+                                            {...register('baseModel')}
+                                            value={model.id}
+                                        />
+                                        <div className="card-content">
+                                            <div className="card-title">{model.id}</div>
+                                            <div className="card-meta">
+                                                <span>{(model.size / (1024 * 1024 * 1024)).toFixed(1)} GB</span>
+                                                <span className="separator">•</span>
+                                                <span>{model.quantization}</span>
                                             </div>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Preset Selection */}

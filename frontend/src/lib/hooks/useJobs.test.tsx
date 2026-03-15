@@ -146,14 +146,14 @@ describe('useStartFineTune', () => {
         const { result } = renderHook(() => useStartFineTune(), { wrapper: createWrapper() });
 
         await result.current.mutateAsync({
-            projectName: 'test-project',
-            datasetId: 'ds-1',
-            baseModel: 'Llama-3.2-3B',
+            project_name: 'test-project',
+            dataset_id: 'ds-1',
+            base_model: 'Llama-3.2-3B',
             epochs: 3,
-            learningRate: 0.0001,
+            learning_rate: 0.0001,
             rank: 64,
-            batchSize: 4,
-            method: 'pissa',
+            batch_size: 4,
+            use_pissa: true,
         });
 
         await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -163,14 +163,14 @@ describe('useStartFineTune', () => {
         const { result } = renderHook(() => useStartFineTune(), { wrapper: createWrapper() });
 
         const response = await result.current.mutateAsync({
-            projectName: 'test-project',
-            datasetId: 'ds-1',
-            baseModel: 'Llama-3.2-3B',
+            project_name: 'test-project',
+            dataset_id: 'ds-1',
+            base_model: 'Llama-3.2-3B',
             epochs: 3,
-            learningRate: 0.0001,
+            learning_rate: 0.0001,
             rank: 64,
-            batchSize: 4,
-            method: 'pissa',
+            batch_size: 4,
+            use_pissa: true,
         });
 
         expect(response).toHaveProperty('jobId');

@@ -267,7 +267,7 @@ export interface TrainingJob {
     createdAt: string;
     startedAt?: string;
     completedAt?: string;
-    duration?: number; // seconds
+    duration?: string | number; // formatted string or seconds
     // Output
     outputDir?: string;
     checkpoints?: string[];

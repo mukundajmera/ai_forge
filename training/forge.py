@@ -445,6 +445,21 @@ class FineTuneTrainer:
         2. Prepares PiSSA adapters
         3. Applies Unsloth optimizations if available
         """
+        # Map local Ollama tags to HuggingFace Hub equivalents
+        OLLAMA_HF_MAPPING = {
+            "llama3.2:3b": "unsloth/Llama-3.2-3B-Instruct",
+            "llama3.1:8b": "unsloth/Meta-Llama-3.1-8B-Instruct",
+            "gemma3:4b": "unsloth/gemma-2-2b-it", # Fallback equivalent
+            "tinyllama:latest": "unsloth/TinyLlama-1.1B-Chat",
+            "gpt-oss:20b": "unsloth/Qwen2.5-14B-Instruct",
+        }
+        
+        original_model = self.config.model.base_model
+        mapped_model = OLLAMA_HF_MAPPING.get(original_model, original_model)
+        if mapped_model != original_model:
+            logger.info(f"Mapped Ollama model '{original_model}' to Hugging Face Hub equivalent '{mapped_model}' for fine-tuning.")
+            self.config.model.base_model = mapped_model
+            
         logger.info(f"Loading model: {self.config.model.base_model}")
         
         try:
@@ -496,9 +511,13 @@ class FineTuneTrainer:
         quant_config = None
         load_in_4bit = self.config.quantization.bits == 4
         
-        # Check for MPS
+        # Check for MPS or CPU
         if self.device == "mps" and load_in_4bit:
             logger.warning("⚠️ Apple MPS detected: Disabling 4-bit quantization (bitsandbytes not supported). Using native precision.")
+            load_in_4bit = False
+            
+        if self.device == "cpu" and load_in_4bit:
+            logger.warning("⚠️ CPU detected: Disabling 4-bit quantization (bitsandbytes not supported). Using native precision.")
             load_in_4bit = False
         
         if load_in_4bit:

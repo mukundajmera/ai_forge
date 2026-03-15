@@ -188,10 +188,8 @@ export function useDeleteModel() {
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async (_modelId: string) => {
-            // Note: API doesn't have a delete endpoint yet, 
-            // this would be implemented when backend supports it
-            throw new APIError(501, 'Model deletion not yet implemented')
+        mutationFn: async (modelId: string) => {
+            await apiClient.deleteModel(modelId)
         },
         onMutate: async (modelId) => {
             await queryClient.cancelQueries({ queryKey: modelQueryKeys.list() })

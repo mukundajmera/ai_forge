@@ -104,6 +104,9 @@ class JobStatus(BaseModel):
     error: Optional[str] = None
     created_at: str
     updated_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    config: Optional[dict] = None
 
 
 class ChatMessage(BaseModel):
@@ -220,12 +223,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize components
     try:
         try:
-            from ai_forge.conductor.job_queue import JobQueue
-            from ai_forge.conductor.persistence import storage
-        except ImportError:
             from ai_forge.conductor.ollama_manager import OllamaManager
             from ai_forge.conductor.job_queue import JobQueue
             from ai_forge.conductor.persistence import storage
+        except ImportError:
+            from conductor.ollama_manager import OllamaManager
+            from conductor.job_queue import JobQueue
+            from conductor.persistence import storage
         
         state.ollama_manager = OllamaManager()
         state.job_queue = JobQueue()
@@ -244,6 +248,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Cleanup
     logger.info("Shutting down AI Forge service...")
+    try:
+        import ai_forge.conductor.service as service_module
+        import psutil
+        for p in list(service_module.process_pool._processes.values()):
+            if p.pid:
+                try:
+                    parent = psutil.Process(p.pid)
+                    for child in parent.children(recursive=True):
+                        child.kill()
+                    parent.kill()
+                except psutil.NoSuchProcess:
+                    pass
+            p.terminate()
+        service_module.process_pool.shutdown(wait=False, cancel_futures=True)
+    except Exception as e:
+        logger.error(f"Error terminating process pool: {e}")
 
 
 # --------------------------------------------------------------------------
@@ -291,9 +311,14 @@ def create_app() -> FastAPI:
         )
 
     
-    # Include data sources router
+    # Include data sources, experiments, and recipes routers
     from ai_forge.conductor.data_sources import router as data_sources_router
+    from ai_forge.conductor.experiments import router as experiments_router
+    from ai_forge.conductor.recipes import router as recipes_router
+    
     application.include_router(data_sources_router, prefix="/api")
+    application.include_router(experiments_router, prefix="/api")
+    application.include_router(recipes_router, prefix="/api")
     
     return application
 
@@ -522,11 +547,44 @@ async def cancel_job(job_id: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = state.jobs[job_id]
-    if job["status"] in ("completed", "failed"):
-        raise HTTPException(status_code=400, detail="Job already finished")
+    if job["status"] in ("completed", "failed", "cancelled"):
+        raise HTTPException(status_code=400, detail="Job already finished or cancelled")
+        
+    # Forcefully terminate the worker process if it's currently running
+    if job.get("status") in ("running", "queued"):
+        logger.info(f"Terminating worker process for cancelled job {job_id}")
+        try:
+            import ai_forge.conductor.service as service_module
+            import psutil
+            for p in list(service_module.process_pool._processes.values()):
+                if p.pid:
+                    try:
+                        parent = psutil.Process(p.pid)
+                        for child in parent.children(recursive=True):
+                            child.kill()
+                        parent.kill()
+                    except psutil.NoSuchProcess:
+                        pass
+                p.terminate()
+                
+            # Recreate process pool to allow future jobs
+            from concurrent.futures import ProcessPoolExecutor
+            service_module.process_pool.shutdown(wait=False, cancel_futures=True)
+            service_module.process_pool = ProcessPoolExecutor(max_workers=1)
+            logger.info("Process pool recreated after cancellation")
+        except Exception as e:
+            logger.error(f"Error terminating job process: {e}")
     
     job["status"] = "cancelled"
     job["updated_at"] = datetime.now().isoformat()
+    if not job.get("completed_at"):
+        job["completed_at"] = datetime.now().isoformat()
+        
+    try:
+        from ai_forge.conductor.persistence import storage
+        storage.set("jobs", job_id, job)
+    except ImportError:
+        pass
     
     return {"message": f"Job {job_id} cancelled"}
 
@@ -649,6 +707,27 @@ async def list_models() -> dict[str, list[ModelInfo]]:
             logger.warning(f"Could not list Ollama models: {e}")
     
     return {"data": models}
+
+
+@app.delete("/v1/models/{model_name:path}", tags=["Models"])
+async def delete_model(model_name: str) -> dict[str, str]:
+    """Delete a model from local Ollama storage.
+    
+    Args:
+        model_name: Name of the model to delete.
+    """
+    if not state.ollama_manager:
+        raise HTTPException(status_code=503, detail="Ollama manager not initialized")
+        
+    try:
+        success = await state.ollama_manager.delete_model(model_name)
+        if success:
+            return {"message": f"Successfully deleted model {model_name}"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to delete model {model_name}. It may not exist.")
+    except Exception as e:
+        logger.error(f"Error deleting model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --------------------------------------------------------------------------
@@ -991,6 +1070,7 @@ async def execute_fine_tune(job_id: str) -> None:
     try:
         job["status"] = "training"
         job["updated_at"] = datetime.now().isoformat()
+        job["started_at"] = job["updated_at"]
         
         # Run in separate process to avoid blocking main loop
         loop = asyncio.get_running_loop()
@@ -1011,11 +1091,15 @@ async def execute_fine_tune(job_id: str) -> None:
             raise Exception(result.get("error", "Unknown error"))
             
     except Exception as e:
-        logger.error(f"Fine-tuning failed for {job_id}: {e}")
-        job["status"] = "failed"
-        job["error"] = str(e)
+        logger.error(f"Fine-tuning exception caught for {job_id}: {e}")
+        # If the job was intentionally cancelled (which kills the process and raises BrokenProcessPool), preserve the cancelled status
+        if job.get("status") != "cancelled":
+            job["status"] = "failed"
+            job["error"] = str(e)
     
     job["updated_at"] = datetime.now().isoformat()
+    if job.get("status") in ("completed", "failed", "cancelled"):
+        job["completed_at"] = job["updated_at"]
 
 
 # --------------------------------------------------------------------------

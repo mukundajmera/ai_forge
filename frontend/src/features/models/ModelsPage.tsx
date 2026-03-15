@@ -4,10 +4,10 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useModels } from '@/lib/hooks';
+import { useModels, useDeleteModel } from './hooks/useModels';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Rocket, Check, Clock, AlertCircle, Server, Cpu } from 'lucide-react';
+import { Rocket, Check, Clock, AlertCircle, Server, Cpu, Trash2 } from 'lucide-react';
 import type { Model } from '@/types';
 
 interface ModelsPageProps {
@@ -16,6 +16,7 @@ interface ModelsPageProps {
 
 export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
     const { data: models, isLoading, error } = useModels();
+    const deleteModelMutation = useDeleteModel();
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
     const navigate = useNavigate();
 
@@ -54,16 +55,23 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
         return `${(bytes / 1e3).toFixed(1)} KB`;
     };
 
+    const handleDelete = (e: React.MouseEvent, modelId: string) => {
+        e.stopPropagation();
+        if (window.confirm(`Are you sure you want to delete ${modelId} from Ollama?`)) {
+            deleteModelMutation.mutate(modelId);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold">Models</h1>
-                    <p className="text-muted">Manage and deploy your fine-tuned models</p>
+                    <p className="text-muted">Manage your deployed Ollama fine-tuned models</p>
                 </div>
-                <Button intent="primary">
+                <Button intent="primary" onClick={() => navigate('/jobs')}>
                     <Rocket className="w-4 h-4 mr-2" />
-                    Deploy to Ollama
+                    Deploy from Jobs
                 </Button>
             </div>
 
@@ -71,17 +79,28 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
                 {models?.map((model) => (
                     <Card
                         key={model.id}
-                        className={`p-4 cursor-pointer transition-colors ${
+                        className={`p-4 cursor-pointer transition-colors relative group ${
                             selectedModel === model.id ? 'border-accent' : ''
                         }`}
                         onClick={() => setSelectedModel(model.id)}
                     >
                         <div className="flex items-start justify-between mb-3">
                             <div>
-                                <h3 className="font-medium">{model.name}</h3>
+                                <h3 className="font-medium mr-8">{model.name}</h3>
                                 <p className="text-sm text-muted">v{model.version}</p>
                             </div>
                             {getStatusIcon(model.status)}
+                        </div>
+
+                        {/* Delete Button (visible on hover) */}
+                        <div className="absolute top-4 right-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                                onClick={(e) => handleDelete(e, model.id)} 
+                                className="p-1.5 text-danger bg-base shadow rounded hover:bg-surface-elevated"
+                                title="Delete model from Ollama"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
                         </div>
 
                         <div className="space-y-2 text-sm">
@@ -115,7 +134,7 @@ export function ModelsPage({ showDeploy: _showDeploy }: ModelsPageProps) {
                         <Server className="w-12 h-12 mx-auto mb-4 text-muted" />
                         <h3 className="font-medium mb-2">No Models Yet</h3>
                         <p className="text-sm text-muted mb-4">
-                            Complete a training job to create your first model
+                            Complete a training job to create and deploy your first model
                         </p>
                         <Button intent="secondary" onClick={() => navigate('/jobs/new')}>
                             Start Training

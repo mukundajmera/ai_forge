@@ -112,7 +112,7 @@ def merge_adapters_to_base(
         logger.info("Loading base model...")
         base_model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
-            device_map="auto",
+            device_map="cpu",  # Force CPU for merging to avoid MPS/auto mapping errors
             trust_remote_code=True,
         )
         
