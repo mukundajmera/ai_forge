@@ -1391,7 +1391,7 @@ class TextModel(ModelBase):
 
         special_vocab = gguf.SpecialVocab(dir_model, load_merges=False)
         special_vocab.merges = merges
-        # only add special tokens when they were not already loaded from config.json
+        # only add special tokens when they were not already loaded from ai_forge.config.json
         if len(special_vocab.special_token_ids) == 0:
             special_vocab._set_special_token("bos", tokenizer.special_tokens["<|endoftext|>"])
             special_vocab._set_special_token("eos", tokenizer.special_tokens["<|endoftext|>"])
@@ -2408,7 +2408,7 @@ class RefactModel(TextModel):
         multiple_of = 256
         ff_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
-        # refact uses Alibi. So this is from config.json which might be used by training.
+        # refact uses Alibi. So this is from ai_forge.config.json which might be used by training.
         self.gguf_writer.add_context_length(self.hparams["n_positions"])
         self.gguf_writer.add_embedding_length(self.hparams["n_embd"])
 
@@ -7764,7 +7764,7 @@ class PanguEmbeddedModel(TextModel):
         hparams = self.hparams
         self.gguf_writer.add_vocab_size(hparams["vocab_size"])
 
-        # PanguEmbedded's hparam loaded from config.json without head_dim
+        # PanguEmbedded's hparam loaded from ai_forge.config.json without head_dim
         if (rope_dim := hparams.get("head_dim")) is None:
             rope_dim = hparams["hidden_size"] // hparams["num_attention_heads"]
         self.gguf_writer.add_rope_dimension_count(rope_dim)
@@ -8517,7 +8517,7 @@ class ChatGLMModel(TextModel):
         self.gguf_writer.add_token_list(tokens)
         self.gguf_writer.add_token_types(toktypes)
         special_vocab = gguf.SpecialVocab(self.dir_model, load_merges=True)
-        # only add special tokens when they were not already loaded from config.json
+        # only add special tokens when they were not already loaded from ai_forge.config.json
         special_vocab._set_special_token("eos", tokenizer.get_added_vocab()["<|endoftext|>"])
         special_vocab._set_special_token("eot", tokenizer.get_added_vocab()["<|user|>"])
         # this one is usually not in config.json anyway
@@ -9791,7 +9791,7 @@ class HunYuanMoEModel(TextModel):
         # 5. Add special tokens and chat templates
         special_vocab = gguf.SpecialVocab(self.dir_model, load_merges=False)
         special_vocab.add_to_gguf(self.gguf_writer)
-        # FIX for BOS token: Overwrite incorrect id read from config.json
+        # FIX for BOS token: Overwrite incorrect id read from ai_forge.config.json
         self.gguf_writer.add_bos_token_id(127959) # <|bos|>
 
     def set_gguf_parameters(self):
@@ -9998,7 +9998,7 @@ class HunYuanModel(TextModel):
             # 5. Add special tokens and chat templates
             special_vocab = gguf.SpecialVocab(self.dir_model, load_merges=False)
             special_vocab.add_to_gguf(self.gguf_writer)
-            # FIX for BOS token: Overwrite incorrect id read from config.json
+            # FIX for BOS token: Overwrite incorrect id read from ai_forge.config.json
             if self.hparams['hidden_size'] == 4096:
                 self.gguf_writer.add_bos_token_id(127958) # only for 7b dense, fix <|bos|> token
 

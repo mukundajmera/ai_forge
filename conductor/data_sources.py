@@ -8,7 +8,7 @@ This module provides REST API endpoints for:
 
 Example:
     >>> # Add to main FastAPI app
-    >>> from conductor.data_sources import router as data_sources_router
+    >>> from ai_forge.conductor.data_sources import router as data_sources_router
     >>> app.include_router(data_sources_router, prefix="/api")
 """
 
@@ -36,7 +36,7 @@ router = APIRouter(tags=["Data Sources"])
 # In-memory storage (would be replaced with database in production)
 # =============================================================================
 
-from conductor.persistence import storage
+from ai_forge.conductor.persistence import storage
 
 # Transient job tracking (doesn't need persistence - jobs are ephemeral)
 _parsing_jobs: dict[str, dict] = {}
@@ -885,7 +885,7 @@ async def parse_files_task(job_id: str, source_id: str) -> None:
                 if file_record["type"] == "code":
                     # Try Tree-sitter parser, fall back to regex
                     try:
-                        from data_pipeline.miner import extract_functions, extract_classes
+                        from ai_forge.data_pipeline.miner import extract_functions, extract_classes
                         
                         code_bytes = file_path.read_bytes()
                         language = file_record.get("language", "python")
@@ -1032,7 +1032,7 @@ async def generate_dataset_task(job_id: str, dataset_id: str) -> None:
                 if file_type == "code":
                     # Use Tree-sitter to extract functions/classes
                     try:
-                        from data_pipeline.miner import extract_functions, extract_classes
+                        from ai_forge.data_pipeline.miner import extract_functions, extract_classes
                         language = file_record.get("language", "python")
                         code_bytes = file_content.encode("utf-8")
                         
@@ -1107,50 +1107,6 @@ async def generate_dataset_task(job_id: str, dataset_id: str) -> None:
                                     "difficulty": "easy",
                                 }
                                 examples.append(example)
-                
-                elif file_type == "pdf":
-                    # Extract text from PDF
-                    try:
-                        import pypdf
-                        import io
-                        
-                        pdf_bytes = file_path.read_bytes()
-                        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-                        
-                        pdf_text = ""
-                        for page in reader.pages:
-                            text = page.extract_text()
-                            if text:
-                                pdf_text += text + "\n\n"
-                        
-                        # clean up text
-                        pdf_text = pdf_text.strip()
-                        
-                        if not pdf_text:
-                            # Fallback if no text extracted (scanned PDF?)
-                             logger.warning(f"No text extracted from PDF {filename}")
-                             pass
-
-                        # Extract paragraphs/sections
-                        paragraphs = [p.strip() for p in pdf_text.split("\n\n") if p.strip() and len(p.strip()) > 50]
-                        
-                        for para in paragraphs[:job["config"]["questionsPerBlock"]]:
-                            example = {
-                                "id": str(uuid.uuid4()),
-                                "question": f"What information is contained in {filename}?",
-                                "questionType": "content",
-                                "context": para[:1500],
-                                "answer": para[:500] + ("..." if len(para) > 500 else ""),
-                                "reasoning": f"Extracting content from PDF {filename}",
-                                "qualityScore": 0.70,
-                                "difficulty": "easy",
-                            }
-                            examples.append(example)
-                            
-                    except Exception as pdf_err:
-                         logger.warning(f"Failed to parse PDF {filename}: {pdf_err}")
-                         # Fallback to empty to avoid crashing or garbage
-
                 
                 else:
                     # Text files - extract paragraphs

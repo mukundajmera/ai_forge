@@ -256,10 +256,10 @@ class TestDataExtraction:
     
     def test_extract_code_chunks(self, sample_repo) -> None:
         """Test extracting code chunks from sample repo."""
-        from data_pipeline.miner import CodeMiner
+        from ai_forge.data_pipeline.miner import parse_repository
+        from ai_forge.data_pipeline.schemas.code_blocks import MinerConfig
         
-        miner = CodeMiner(sample_repo, languages=["python"])
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_repo), MinerConfig(languages=["python"]))
         
         # Should extract functions and classes
         assert len(chunks) > 0
@@ -270,10 +270,9 @@ class TestDataExtraction:
     
     def test_extract_includes_docstrings(self, sample_repo) -> None:
         """Test that docstrings are extracted."""
-        from data_pipeline.miner import CodeMiner
+        from ai_forge.data_pipeline.miner import parse_repository
         
-        miner = CodeMiner(sample_repo)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_repo))
         
         # At least some chunks should have docstrings
         with_docstring = [c for c in chunks if c.docstring]
@@ -289,21 +288,20 @@ class TestRAFTGeneration:
     
     def test_generate_raft_examples(self, sample_repo) -> None:
         """Test generating RAFT examples from chunks."""
-        from data_pipeline.miner import CodeMiner
-        from data_pipeline.raft_generator import RAFTGenerator
+        from ai_forge.data_pipeline.miner import parse_repository
+        from ai_forge.data_pipeline.raft_generator import RAFTGenerator
         
         # Extract chunks
-        miner = CodeMiner(sample_repo)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_repo))
         
         # Generate RAFT data
         generator = RAFTGenerator(chunks)
         examples = generator.generate_dataset(num_examples=10)
         
-        assert len(examples) > 0
+        assert len(examples.examples) > 0
         
         # Check structure
-        for ex in examples:
+        for ex in examples.to_training_format():
             assert "instruction" in ex
             assert "input" in ex or "context" in ex
             assert "output" in ex
@@ -318,22 +316,21 @@ class TestDataValidation:
     
     def test_validate_generated_data(self, sample_repo) -> None:
         """Test validating generated training data."""
-        from data_pipeline.miner import CodeMiner
-        from data_pipeline.raft_generator import RAFTGenerator
-        from data_pipeline.validator import DataValidator
+        from ai_forge.data_pipeline.miner import parse_repository
+        from ai_forge.data_pipeline.raft_generator import RAFTGenerator
+        from ai_forge.data_pipeline.validator import DataValidator
         
         # Generate data
-        miner = CodeMiner(sample_repo)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_repo))
         generator = RAFTGenerator(chunks)
         examples = generator.generate_dataset(num_examples=10)
         
         # Validate
-        validator = DataValidator(examples)
-        result = validator.validate_all()
+        validator = DataValidator()
+        validation_results, metrics = validator.validate_all(examples.examples)
         
-        assert result.total_samples > 0
-        assert result.quality_score >= 0
+        assert len(validation_results) > 0
+        assert metrics.quality_score_mean >= 0
 
 
 # =============================================================================
@@ -345,30 +342,29 @@ class TestPipelineIntegration:
     
     def test_extract_to_validation(self, sample_repo) -> None:
         """Test full data pipeline: extract → RAFT → validate."""
-        from data_pipeline.miner import CodeMiner
-        from data_pipeline.raft_generator import RAFTGenerator
-        from data_pipeline.validator import DataValidator
+        from ai_forge.data_pipeline.miner import parse_repository
+        from ai_forge.data_pipeline.raft_generator import RAFTGenerator
+        from ai_forge.data_pipeline.validator import DataValidator
         
         # Step 1: Extract
-        miner = CodeMiner(sample_repo)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_repo))
         assert len(chunks) > 0, "No chunks extracted"
         
         # Step 2: Generate RAFT
         generator = RAFTGenerator(chunks)
         examples = generator.generate_dataset(num_examples=20)
-        assert len(examples) > 0, "No examples generated"
+        assert len(examples.examples) > 0, "No examples generated"
         
         # Step 3: Validate
-        validator = DataValidator(examples)
-        result = validator.validate_all()
+        validator = DataValidator()
+        results, metrics = validator.validate_all(examples.examples)
         
         # Save for training
         output_path = sample_repo / "data" / "training_data.json"
         output_path.parent.mkdir(exist_ok=True)
         
         with open(output_path, "w") as f:
-            json.dump(examples, f)
+            json.dump(examples.to_training_format(), f)
         
         assert output_path.exists()
     
@@ -405,7 +401,7 @@ class TestServiceIntegration:
         """Create test client."""
         pytest.importorskip("fastapi")
         from fastapi.testclient import TestClient
-        from conductor.service import app, state
+        from ai_forge.conductor.service import app, state
         
         state.jobs = {}
         return TestClient(app)
@@ -454,11 +450,10 @@ class Class_{i}:
         
         subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
         
-        from data_pipeline.miner import CodeMiner
+        from ai_forge.data_pipeline.miner import parse_repository
         
         start = time.time()
-        miner = CodeMiner(tmp_path)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(tmp_path))
         elapsed = time.time() - start
         
         print(f"\n[PERF] Extracted {len(chunks)} chunks in {elapsed:.2f}s")
@@ -477,15 +472,14 @@ class TestFullE2E:
     @pytest.mark.asyncio
     async def test_complete_pipeline_flow(self, sample_repo) -> None:
         """Test complete pipeline: extract → train → eval → deploy."""
-        from data_pipeline.miner import CodeMiner
-        from data_pipeline.raft_generator import RAFTGenerator
-        from data_pipeline.validator import DataValidator
+        from ai_forge.data_pipeline.miner import parse_repository
+        from ai_forge.data_pipeline.raft_generator import RAFTGenerator
+        from ai_forge.data_pipeline.validator import DataValidator
         
         results = {"steps": []}
         
         # Step 1: Extract
-        miner = CodeMiner(sample_repo)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_repo))
         results["steps"].append({
             "name": "extract",
             "success": len(chunks) > 0,
@@ -497,17 +491,17 @@ class TestFullE2E:
         examples = generator.generate_dataset(num_examples=50)
         results["steps"].append({
             "name": "generate",
-            "success": len(examples) > 0,
-            "examples": len(examples),
+            "success": len(examples.examples) > 0,
+            "examples": len(examples.examples),
         })
         
         # Step 3: Validate
-        validator = DataValidator(examples)
-        validation = validator.validate_all()
+        validator = DataValidator()
+        validation_results, metrics = validator.validate_all(examples.examples)
         results["steps"].append({
             "name": "validate",
-            "success": validation.is_valid,
-            "quality": validation.quality_score,
+            "success": len(validation_results) > 0,
+            "quality": metrics.quality_score_mean,
         })
         
         # Step 4: Training (mocked)

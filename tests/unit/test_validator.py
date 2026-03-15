@@ -18,20 +18,20 @@ from textwrap import dedent
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from data_pipeline.schemas.code_blocks import CodeBlock
-from data_pipeline.schemas.metrics import (
+from ai_forge.data_pipeline.schemas.code_blocks import CodeBlock
+from ai_forge.data_pipeline.schemas.metrics import (
     DataQualityMetrics,
     FilteringStats,
     QualityScore,
     ValidationConfig,
     ValidationResult,
 )
-from data_pipeline.schemas.raft_examples import (
+from ai_forge.data_pipeline.schemas.raft_examples import (
     Difficulty,
     QuestionType,
     RAFTExample,
 )
-from data_pipeline.validator import (
+from ai_forge.data_pipeline.validator import (
     DataValidator,
     validate_code_block,
     validate_raft_example,

@@ -11,7 +11,7 @@ Key Features:
     - Quality report generation
 
 Example:
-    >>> from data_pipeline.validator import DataValidator, ValidationConfig
+    >>> from ai_forge.data_pipeline.validator import DataValidator, ValidationConfig
     >>> validator = DataValidator(ValidationConfig())
     >>> result = validator.validate_code_block(block)
     >>> metrics = validator.score_data_quality(dataset)
@@ -27,15 +27,15 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Optional
 
-from data_pipeline.schemas.code_blocks import CodeBlock
-from data_pipeline.schemas.metrics import (
+from ai_forge.data_pipeline.schemas.code_blocks import CodeBlock
+from ai_forge.data_pipeline.schemas.metrics import (
     DataQualityMetrics,
     FilteringStats,
     QualityScore,
     ValidationConfig,
     ValidationResult,
 )
-from data_pipeline.schemas.raft_examples import (
+from ai_forge.data_pipeline.schemas.raft_examples import (
     Difficulty,
     QuestionType,
     RAFTDataset,

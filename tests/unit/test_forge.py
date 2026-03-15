@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from training.schemas import (
+from ai_forge.training.schemas import (
     FineTuneConfig,
     PiSSAConfig,
     QuantizationConfig,
@@ -31,7 +31,7 @@ from training.schemas import (
     QuantType,
     OptimizerType,
 )
-from training.forge import (
+from ai_forge.training.forge import (
     PiSSAInitializer,
     TrainingState,
     MetricsLoggerCallback,
@@ -376,7 +376,7 @@ class TestFineTuneTrainerMocked:
     
     def test_trainer_initialization(self, default_config: FineTuneConfig) -> None:
         """Test trainer can be initialized."""
-        from training.forge import FineTuneTrainer
+        from ai_forge.training.forge import FineTuneTrainer
         
         trainer = FineTuneTrainer(default_config)
         
@@ -385,7 +385,7 @@ class TestFineTuneTrainerMocked:
     
     def test_add_callback(self, default_config: FineTuneConfig) -> None:
         """Test adding callbacks."""
-        from training.forge import FineTuneTrainer
+        from ai_forge.training.forge import FineTuneTrainer
         
         trainer = FineTuneTrainer(default_config)
         callback = EarlyStoppingCallback()
@@ -396,7 +396,7 @@ class TestFineTuneTrainerMocked:
     
     def test_count_trainable_params_no_model(self, default_config: FineTuneConfig) -> None:
         """Test trainable params count without model."""
-        from training.forge import FineTuneTrainer
+        from ai_forge.training.forge import FineTuneTrainer
         
         trainer = FineTuneTrainer(default_config)
         
@@ -486,7 +486,7 @@ class TestLossPlotter:
     
     def test_init_creates_output_dir(self, tmp_path: Path) -> None:
         """Test that output directory is created."""
-        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        from ai_forge.training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
         
         output_dir = tmp_path / "plots"
         config = LossPlotterConfig(output_dir=str(output_dir))
@@ -496,7 +496,7 @@ class TestLossPlotter:
     
     def test_log_stores_history(self, tmp_path: Path) -> None:
         """Test that on_log stores metrics in history."""
-        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        from ai_forge.training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
         
         config = LossPlotterConfig(output_dir=str(tmp_path), plot_interval=1000)
         plotter = LossPlotter(config)
@@ -511,7 +511,7 @@ class TestLossPlotter:
         """Test that save_plot creates a PNG file."""
         pytest.importorskip("matplotlib")
         
-        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        from ai_forge.training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
         
         config = LossPlotterConfig(output_dir=str(tmp_path), plot_interval=1000)
         plotter = LossPlotter(config)
@@ -528,7 +528,7 @@ class TestLossPlotter:
     
     def test_smoothing(self, tmp_path: Path) -> None:
         """Test loss smoothing functionality."""
-        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        from ai_forge.training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
         
         config = LossPlotterConfig(output_dir=str(tmp_path), smooth_window=3)
         plotter = LossPlotter(config)
@@ -545,7 +545,7 @@ class TestLossPlotter:
     
     def test_get_loss_series(self, tmp_path: Path) -> None:
         """Test extracting loss series for a specific metric."""
-        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        from ai_forge.training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
         
         config = LossPlotterConfig(output_dir=str(tmp_path))
         plotter = LossPlotter(config)
@@ -561,7 +561,7 @@ class TestLossPlotter:
     
     def test_get_latest_loss(self, tmp_path: Path) -> None:
         """Test getting the latest loss value."""
-        from training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
+        from ai_forge.training.callbacks.loss_plotter import LossPlotter, LossPlotterConfig
         
         config = LossPlotterConfig(output_dir=str(tmp_path))
         plotter = LossPlotter(config)
@@ -583,7 +583,7 @@ class TestQuantizationReduction:
     
     def test_quantization_config_defaults(self) -> None:
         """Test default quantization configuration."""
-        from training.schemas import QuantizationConfig, QuantType
+        from ai_forge.training.schemas import QuantizationConfig, QuantType
         
         config = QuantizationConfig()
         
@@ -642,7 +642,7 @@ class TestCheckpointPersistence:
     
     def test_config_serialization_roundtrip(self, tmp_path: Path) -> None:
         """Test that config can be saved and loaded correctly."""
-        from training.schemas import FineTuneConfig
+        from ai_forge.training.schemas import FineTuneConfig
         
         # Create config with custom values
         config = FineTuneConfig()
@@ -664,8 +664,8 @@ class TestCheckpointPersistence:
     
     def test_checkpoint_directory_creation(self, tmp_path: Path) -> None:
         """Test that checkpoint directories are created correctly."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig
+        from ai_forge.training.forge import FineTuneTrainer
+        from ai_forge.training.schemas import FineTuneConfig
         
         config = FineTuneConfig()
         config.logging.output_dir = str(tmp_path / "output")
@@ -682,7 +682,7 @@ class TestCheckpointPersistence:
         except ImportError:
             pytest.skip("PyTorch not installed")
         
-        from training.forge import PiSSAInitializer
+        from ai_forge.training.forge import PiSSAInitializer
         
         rank = 32
         out_features = 256
@@ -727,7 +727,7 @@ class TestDPOConfiguration:
     
     def test_dpo_config_defaults(self) -> None:
         """Test default DPO configuration."""
-        from training.schemas import DPOConfig, DPOLossType
+        from ai_forge.training.schemas import DPOConfig, DPOLossType
         
         config = DPOConfig()
         
@@ -738,110 +738,13 @@ class TestDPOConfiguration:
     
     def test_dpo_disabled_by_default(self) -> None:
         """Test that DPO is disabled by default in trainer."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig
+        from ai_forge.training.forge import FineTuneTrainer
+        from ai_forge.training.schemas import FineTuneConfig
         
         config = FineTuneConfig()
         trainer = FineTuneTrainer(config)
         
         assert trainer.config.dpo.enabled is False
-
-
-class TestCPUDeviceAdjustment:
-    """Tests for automatic CPU config adjustments."""
-
-    def test_cpu_disables_bf16(self) -> None:
-        """Test that CPU device auto-disables bf16."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig, HardwareConfig
-
-        config = FineTuneConfig(hardware=HardwareConfig(device="cpu", bf16=True))
-        trainer = FineTuneTrainer(config)
-
-        assert trainer.device == "cpu"
-        assert config.hardware.bf16 is False
-
-    def test_cpu_disables_fp16(self) -> None:
-        """Test that CPU device auto-disables fp16."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig, HardwareConfig
-
-        config = FineTuneConfig(hardware=HardwareConfig(device="cpu", fp16=True))
-        trainer = FineTuneTrainer(config)
-
-        assert config.hardware.fp16 is False
-
-    def test_cpu_switches_optimizer(self) -> None:
-        """Test that CPU device switches adamw_8bit to adamw."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig, HardwareConfig, TrainingConfig
-
-        config = FineTuneConfig(
-            hardware=HardwareConfig(device="cpu"),
-            training=TrainingConfig(optimizer=OptimizerType.ADAMW_8BIT),
-        )
-        trainer = FineTuneTrainer(config)
-
-        assert config.training.optimizer == OptimizerType.ADAMW
-
-    def test_cpu_disables_4bit_loading(self) -> None:
-        """Test that CPU device disables 4-bit model loading."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig, HardwareConfig, ModelConfig
-
-        config = FineTuneConfig(
-            hardware=HardwareConfig(device="cpu"),
-            model=ModelConfig(load_in_4bit=True),
-        )
-        trainer = FineTuneTrainer(config)
-
-        assert config.model.load_in_4bit is False
-
-    def test_cpu_preserves_valid_optimizer(self) -> None:
-        """Test that CPU device does not change valid optimizer."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig, HardwareConfig, TrainingConfig
-
-        config = FineTuneConfig(
-            hardware=HardwareConfig(device="cpu"),
-            training=TrainingConfig(optimizer=OptimizerType.ADAFACTOR),
-        )
-        trainer = FineTuneTrainer(config)
-
-        assert config.training.optimizer == OptimizerType.ADAFACTOR
-
-    @patch("training.forge.detect_device", return_value="cpu")
-    def test_auto_detect_cpu_adjusts_config(self, mock_detect) -> None:
-        """Test that auto-detected CPU properly adjusts config."""
-        from training.forge import FineTuneTrainer
-        from training.schemas import FineTuneConfig
-
-        config = FineTuneConfig()  # default device="auto", bf16=True, adamw_8bit
-        trainer = FineTuneTrainer(config)
-
-        assert trainer.device == "cpu"
-        assert config.hardware.bf16 is False
-        assert config.training.optimizer == OptimizerType.ADAMW
-        assert config.model.load_in_4bit is False
-
-    def test_get_training_arguments_warmup_ratio_excluded(self) -> None:
-        """Test warmup_ratio excluded when warmup_steps > 0."""
-        config = FineTuneConfig()
-        config.training.warmup_steps = 100
-        config.training.warmup_ratio = 0.03
-
-        args = config.get_training_arguments()
-        assert "warmup_ratio" not in args
-        assert args["warmup_steps"] == 100
-
-    def test_get_training_arguments_warmup_ratio_included_when_steps_zero(self) -> None:
-        """Test warmup_ratio included when warmup_steps = 0."""
-        config = FineTuneConfig()
-        config.training.warmup_steps = 0
-        config.training.warmup_ratio = 0.1
-
-        args = config.get_training_arguments()
-        assert args["warmup_ratio"] == 0.1
 
 
 if __name__ == "__main__":

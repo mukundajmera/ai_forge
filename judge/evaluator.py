@@ -451,7 +451,7 @@ class ModelEvaluator:
         reproduce code it was trained on.
         
         Args:
-            original_code_blocks: Original code samples from training.
+            original_code_blocks: Original code samples from ai_forge.training.
             prompts: Optional custom prompts (defaults to first 50 chars).
             
         Returns:

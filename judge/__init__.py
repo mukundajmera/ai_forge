@@ -4,9 +4,9 @@ This module provides model evaluation, benchmarking, and export
 capabilities for fine-tuned models.
 """
 
-from judge.evaluator import ModelEvaluator, EvaluationResult, EvaluatorConfig
-from judge.exporter import GGUFExporter, ExportConfig, merge_adapters_to_base
-from judge.report import EvaluationReport
+from ai_forge.judge.evaluator import ModelEvaluator, EvaluationResult, EvaluatorConfig
+from ai_forge.judge.exporter import GGUFExporter, ExportConfig, merge_adapters_to_base
+from ai_forge.judge.report import EvaluationReport
 
 __all__ = [
     "ModelEvaluator",

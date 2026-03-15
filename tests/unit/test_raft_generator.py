@@ -19,8 +19,8 @@ from textwrap import dedent
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from data_pipeline.schemas.code_blocks import CodeBlock
-from data_pipeline.schemas.raft_examples import (
+from ai_forge.data_pipeline.schemas.code_blocks import CodeBlock
+from ai_forge.data_pipeline.schemas.raft_examples import (
     Difficulty,
     QuestionType,
     QUESTION_TEMPLATES,
@@ -28,7 +28,7 @@ from data_pipeline.schemas.raft_examples import (
     RAFTDataset,
     RAFTExample,
 )
-from data_pipeline.raft_generator import (
+from ai_forge.data_pipeline.raft_generator import (
     RAFTGenerator,
     generate_questions_for_block,
     retrieve_oracle_and_distractors,

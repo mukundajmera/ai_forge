@@ -44,7 +44,7 @@ def mock_tokenizer():
 @pytest.fixture
 def evaluator_config():
     """Create evaluator config."""
-    from judge.evaluator import EvaluatorConfig
+    from ai_forge.judge.evaluator import EvaluatorConfig
     return EvaluatorConfig(
         batch_size=2,
         max_samples=10,
@@ -61,7 +61,7 @@ class TestEvaluationResult:
     
     def test_to_dict(self) -> None:
         """Test conversion to dictionary."""
-        from judge.evaluator import EvaluationResult
+        from ai_forge.judge.evaluator import EvaluationResult
         
         result = EvaluationResult(
             perplexity=5.5,
@@ -77,7 +77,7 @@ class TestEvaluationResult:
     
     def test_summary(self) -> None:
         """Test summary generation."""
-        from judge.evaluator import EvaluationResult
+        from ai_forge.judge.evaluator import EvaluationResult
         
         result = EvaluationResult(
             perplexity=5.5,
@@ -224,7 +224,7 @@ class TestGGUFExport:
     
     def test_export_config_defaults(self) -> None:
         """Test default export configuration."""
-        from judge.exporter import ExportConfig
+        from ai_forge.judge.exporter import ExportConfig
         
         config = ExportConfig()
         
@@ -234,7 +234,7 @@ class TestGGUFExport:
     
     def test_quantization_recommendations(self) -> None:
         """Test quantization recommendations."""
-        from judge.exporter import GGUFExporter
+        from ai_forge.judge.exporter import GGUFExporter
         
         recommendations = GGUFExporter.QUANT_RECOMMENDATIONS
         
@@ -243,7 +243,7 @@ class TestGGUFExport:
     
     def test_size_estimation(self, tmp_path: Path) -> None:
         """Test model size estimation."""
-        from judge.exporter import GGUFExporter, ExportConfig
+        from ai_forge.judge.exporter import GGUFExporter, ExportConfig
         
         # Create minimal mock model dir
         model_dir = tmp_path / "model"
@@ -269,7 +269,7 @@ class TestModelfileGeneration:
     
     def test_modelfile_syntax(self, tmp_path: Path) -> None:
         """Test that generated Modelfile has valid syntax."""
-        from judge.exporter import GGUFExporter, ExportConfig
+        from ai_forge.judge.exporter import GGUFExporter, ExportConfig
         
         # Create mock model and GGUF
         model_dir = tmp_path / "model"
@@ -297,7 +297,7 @@ class TestModelfileGeneration:
     
     def test_modelfile_includes_prompt(self, tmp_path: Path) -> None:
         """Test that system prompt is included."""
-        from judge.exporter import GGUFExporter, ExportConfig
+        from ai_forge.judge.exporter import GGUFExporter, ExportConfig
         
         model_dir = tmp_path / "model"
         model_dir.mkdir()
@@ -325,7 +325,7 @@ class TestEvaluationReport:
     
     def test_add_metrics(self) -> None:
         """Test adding metrics to report."""
-        from judge.report import EvaluationReport
+        from ai_forge.judge.report import EvaluationReport
         
         report = EvaluationReport(
             model_name="test-model",
@@ -339,7 +339,7 @@ class TestEvaluationReport:
     
     def test_compute_improvement(self) -> None:
         """Test improvement calculation."""
-        from judge.report import EvaluationReport
+        from ai_forge.judge.report import EvaluationReport
         
         report = EvaluationReport(
             model_name="fine-tuned",
@@ -355,7 +355,7 @@ class TestEvaluationReport:
     
     def test_to_markdown(self, tmp_path: Path) -> None:
         """Test markdown generation."""
-        from judge.report import EvaluationReport
+        from ai_forge.judge.report import EvaluationReport
         
         report = EvaluationReport(
             model_name="test-model",
@@ -373,7 +373,7 @@ class TestEvaluationReport:
     
     def test_to_json(self, tmp_path: Path) -> None:
         """Test JSON export."""
-        from judge.report import EvaluationReport
+        from ai_forge.judge.report import EvaluationReport
         import json
         
         report = EvaluationReport(

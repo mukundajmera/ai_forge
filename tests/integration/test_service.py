@@ -30,7 +30,7 @@ def test_client():
     pytest.importorskip("httpx")
     
     from fastapi.testclient import TestClient
-    from conductor.service import app, state
+    from ai_forge.conductor.service import app, state
     
     # Reset state
     state.jobs = {}
@@ -96,7 +96,7 @@ class TestModelsEndpoint:
     
     def test_list_models_with_ollama(self, test_client, mock_ollama) -> None:
         """Test models list with Ollama available."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         state.ollama_manager = mock_ollama
         
         response = test_client.get("/v1/models")
@@ -150,7 +150,7 @@ class TestChatCompletions:
     
     def test_chat_request_format(self, test_client, mock_ollama) -> None:
         """Test chat accepts OpenAI format."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         state.ollama_manager = mock_ollama
         
         response = test_client.post("/v1/chat/completions", json={
@@ -170,7 +170,7 @@ class TestChatCompletions:
     
     def test_chat_response_format(self, test_client, mock_ollama) -> None:
         """Test chat response matches OpenAI format."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         state.ollama_manager = mock_ollama
         
         response = test_client.post("/v1/chat/completions", json={
@@ -204,7 +204,7 @@ class TestQueryEndpoint:
     
     def test_query_with_ollama(self, test_client, mock_ollama) -> None:
         """Test query works with Ollama."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         state.ollama_manager = mock_ollama
         
         response = test_client.post("/v1/query", json={
@@ -233,7 +233,7 @@ class TestStatusEndpoint:
     
     def test_status_alias_works(self, test_client) -> None:
         """Test status endpoint is alias for job status."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         
         # Create a mock job
         state.jobs["test-job"] = {
@@ -266,7 +266,7 @@ class TestDeployEndpoint:
     
     def test_deploy_job_not_completed(self, test_client) -> None:
         """Test deploy fails for incomplete job."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         
         state.jobs["test-job"] = {
             "job_id": "test-job",
@@ -295,7 +295,7 @@ class TestValidateEndpoint:
     
     def test_validate_job_not_completed(self, test_client) -> None:
         """Test validate fails for incomplete job."""
-        from conductor.service import state
+        from ai_forge.conductor.service import state
         
         state.jobs["test-job"] = {
             "job_id": "test-job",

@@ -372,7 +372,7 @@ class OllamaManager:
     # -------------------------------------------------------------------------
     
     def get_active_model(self) -> Optional[str]:
-        """Get the currently active model from config.
+        """Get the currently active model from ai_forge.config.
         
         Returns:
             Active model name or None.

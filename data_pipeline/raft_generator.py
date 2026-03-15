@@ -16,7 +16,7 @@ RAFT Concept:
     - Reduce hallucinations by learning citation habits
 
 Example:
-    >>> from data_pipeline.raft_generator import RAFTGenerator
+    >>> from ai_forge.data_pipeline.raft_generator import RAFTGenerator
     >>> generator = RAFTGenerator(code_blocks)
     >>> dataset = generator.generate_dataset(num_examples=1000)
     >>> training_data = dataset.to_training_format()
@@ -30,8 +30,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from data_pipeline.schemas.code_blocks import CodeBlock
-from data_pipeline.schemas.raft_examples import (
+from ai_forge.data_pipeline.schemas.code_blocks import CodeBlock
+from ai_forge.data_pipeline.schemas.raft_examples import (
     Difficulty,
     QuestionType,
     QUESTION_TEMPLATES,

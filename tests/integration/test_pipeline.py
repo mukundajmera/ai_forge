@@ -76,26 +76,26 @@ class TestDataPipelineIntegration:
     
     def test_full_extraction_pipeline(self, sample_project: Path) -> None:
         """Test complete data extraction from a project."""
-        from ai_forge.data_pipeline import CodeMiner, RAFTGenerator, DataValidator
+        from ai_forge.data_pipeline.miner import parse_repository
+        from ai_forge.data_pipeline import RAFTGenerator, DataValidator
         
         # Step 1: Mine code
-        miner = CodeMiner(sample_project)
-        chunks = miner.extract_all()
+        chunks = parse_repository(str(sample_project))
         
         assert len(chunks) > 0
         
         # Step 2: Generate RAFT data
         generator = RAFTGenerator(chunks)
-        dataset = generator.generate_dataset(num_samples=10)
+        dataset = generator.generate_dataset(num_examples=10)
         
-        assert len(dataset) == 10
+        assert len(dataset.examples) == 10
         
         # Step 3: Validate
-        validator = DataValidator(dataset)
-        result = validator.validate_all()
+        validator = DataValidator()
+        results, metrics = validator.validate_all(dataset.examples)
         
         # May not be valid due to small sample size, but should run
-        assert result.total_samples == 10
+        assert metrics.total_examples == 10
 
 
 class TestAPIIntegration:

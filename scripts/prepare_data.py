@@ -21,9 +21,9 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 try:
-    from data_pipeline.miner import parse_repository
-    from data_pipeline.raft_generator import generate_raft_examples
-    from data_pipeline.schemas.raft_examples import RAFTConfig
+    from ai_forge.data_pipeline.miner import parse_repository
+    from ai_forge.data_pipeline.raft_generator import generate_raft_examples
+    from ai_forge.data_pipeline.schemas.raft_examples import RAFTConfig
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Please run this script from the project root or install requirements.")
@@ -53,7 +53,7 @@ def main():
     
     # 1. Parse Repository
     try:
-        from data_pipeline.schemas.code_blocks import MinerConfig
+        from ai_forge.data_pipeline.schemas.code_blocks import MinerConfig
         config = MinerConfig(include_tests=args.include_tests)
         
         blocks = parse_repository(str(repo_path), config)

@@ -10,9 +10,9 @@ __author__ = "AI Forge Team"
 # NOTE: These imports are temporarily disabled due to module export mismatches.
 # The submodule __init__.py files need to be updated to export these classes.
 # For now, import directly from the submodules:
-#   from data_pipeline.miner import parse_repository
-#   from data_pipeline.raft_generator import RAFTGenerator
-#   from training.forge import TrainingForge
+#   from ai_forge.data_pipeline.miner import parse_repository
+#   from ai_forge.data_pipeline.raft_generator import RAFTGenerator
+#   from ai_forge.training.forge import TrainingForge
 # 
 # from ai_forge.data_pipeline import CodeMiner, RAFTGenerator, DataValidator
 # from ai_forge.training import TrainingForge, ForgeConfig

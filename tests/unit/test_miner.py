@@ -19,13 +19,13 @@ from textwrap import dedent
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from data_pipeline.schemas.code_blocks import (
+from ai_forge.data_pipeline.schemas.code_blocks import (
     CodeBlock,
     MinerConfig,
     QualityLevel,
     LANGUAGE_CONFIGS,
 )
-from data_pipeline.miner import (
+from ai_forge.data_pipeline.miner import (
     extract_functions,
     extract_classes,
     extract_module_info,

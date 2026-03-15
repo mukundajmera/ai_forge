@@ -271,7 +271,7 @@ class TestFastAPIEndpoints:
         pytest.importorskip("httpx")
         
         from fastapi.testclient import TestClient
-        from conductor.service import app, state
+        from ai_forge.conductor.service import app, state
         
         state.jobs = {}
         return TestClient(app)

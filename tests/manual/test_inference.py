@@ -4,8 +4,8 @@ from pathlib import Path
 
 sys.path.append(os.getcwd())
 
-from training.forge import FineTuneTrainer
-from training.schemas import FineTuneConfig, ModelConfig
+from ai_forge.training.forge import FineTuneTrainer
+from ai_forge.training.schemas import FineTuneConfig, ModelConfig
 
 def test_inference():
     print("Testing inference with trained model...")

@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 @pytest.fixture
 def ollama_config():
     """Create OllamaConfig for testing."""
-    from conductor.ollama_manager import OllamaConfig
+    from ai_forge.conductor.ollama_manager import OllamaConfig
     
     return OllamaConfig(
         host="http://localhost:11434",
@@ -39,7 +39,7 @@ def ollama_config():
 @pytest.fixture
 def ollama_manager(ollama_config):
     """Create OllamaManager instance."""
-    from conductor.ollama_manager import OllamaManager
+    from ai_forge.conductor.ollama_manager import OllamaManager
     
     return OllamaManager(ollama_config)
 
@@ -64,7 +64,7 @@ class TestOllamaConfig:
     
     def test_default_config(self) -> None:
         """Test default configuration values."""
-        from conductor.ollama_manager import OllamaConfig
+        from ai_forge.conductor.ollama_manager import OllamaConfig
         
         config = OllamaConfig()
         
@@ -73,7 +73,7 @@ class TestOllamaConfig:
     
     def test_custom_config(self) -> None:
         """Test custom configuration."""
-        from conductor.ollama_manager import OllamaConfig
+        from ai_forge.conductor.ollama_manager import OllamaConfig
         
         config = OllamaConfig(
             host="http://custom:8080",

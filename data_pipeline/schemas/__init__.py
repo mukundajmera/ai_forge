@@ -1,6 +1,6 @@
 """Schemas for data pipeline module."""
 
-from data_pipeline.schemas.code_blocks import (
+from ai_forge.data_pipeline.schemas.code_blocks import (
     CodeBlock,
     MinerConfig,
     LanguageConfig,

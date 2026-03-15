@@ -29,9 +29,6 @@ class PersistentStorage:
             "parsed_files": {},
             "datasets": {},
             "jobs": {},
-            "experiments": {},
-            "dataset_versions": {},
-            "recipes": {},
         }
         self._load()
 
@@ -53,10 +50,7 @@ class PersistentStorage:
                 self._data.update(loaded_data)
                 
                 # Ensure all required keys exist
-                for key in [
-                    "data_sources", "parsed_files", "datasets", "jobs",
-                    "experiments", "dataset_versions", "recipes",
-                ]:
+                for key in ["data_sources", "parsed_files", "datasets", "jobs"]:
                     if key not in self._data:
                         self._data[key] = {}
                         

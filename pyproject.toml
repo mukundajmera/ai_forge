@@ -96,9 +96,23 @@ Homepage = "https://github.com/ai-forge/ai-forge"
 Documentation = "https://ai-forge.readthedocs.io"
 Repository = "https://github.com/ai-forge/ai-forge"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["ai_forge*"]
+[tool.setuptools.package-dir]
+ai_forge = "."
+
+[tool.setuptools]
+packages = [
+    "ai_forge",
+    "ai_forge.conductor",
+    "ai_forge.config",
+    "ai_forge.training",
+    "ai_forge.training.losses",
+    "ai_forge.training.callbacks",
+    "ai_forge.data_pipeline",
+    "ai_forge.data_pipeline.schemas",
+    "ai_forge.judge",
+    "ai_forge.judge.benchmarks",
+    "ai_forge.antigravity_agent",
+]
 
 [tool.setuptools.package-data]
 ai_forge = [

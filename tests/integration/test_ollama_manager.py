@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 @pytest.fixture
 def ollama_manager():
     """Create OllamaManager instance."""
-    from conductor.ollama_manager import OllamaManager, OllamaConfig
+    from ai_forge.conductor.ollama_manager import OllamaManager, OllamaConfig
     
     config = OllamaConfig(
         host="http://localhost:11434",

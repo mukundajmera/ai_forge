@@ -5,8 +5,8 @@ from pathlib import Path
 # Add current directory to path
 sys.path.append(os.getcwd())
 
-from training.schemas import FineTuneConfig, TrainingConfig
-from training.forge import FineTuneTrainer
+from ai_forge.training.schemas import FineTuneConfig, TrainingConfig
+from ai_forge.training.forge import FineTuneTrainer
 from unittest.mock import MagicMock, patch
 
 def test_epochs_passing():

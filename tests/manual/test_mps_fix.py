@@ -4,14 +4,14 @@ import os
 # Import the module that should have the fix
 try:
     print("Importing training.forge...")
-    from training import forge
+    from ai_forge.training import forge
     print("Successfully imported training.forge")
 except ImportError as e:
-    print(f"Failed to import training.forge: {e}")
+    print(f"Failed to import ai_forge.training.forge: {e}")
     # Try adding current dir to path
     sys.path.append(os.getcwd())
     try:
-        from training import forge
+        from ai_forge.training import forge
         print("Successfully imported training.forge after sys.path update")
     except ImportError as e2:
         print(f"Still failed to import: {e2}")

@@ -5,7 +5,7 @@ for Fine-tuning training data. Includes Tree-sitter AST parsing
 and RAFT data synthesis.
 """
 
-from data_pipeline.miner import (
+from .miner import (
     parse_repository,
     extract_functions,
     extract_classes,
@@ -13,7 +13,7 @@ from data_pipeline.miner import (
     filter_by_quality,
     scan_repository_stats,
 )
-from data_pipeline.schemas.code_blocks import CodeBlock, MinerConfig
+from .schemas.code_blocks import CodeBlock, MinerConfig
 
 __all__ = [
     "parse_repository",

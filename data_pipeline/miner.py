@@ -27,7 +27,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Iterator, Optional, Tuple
 
-from data_pipeline.schemas.code_blocks import (
+from .schemas.code_blocks import (
     CodeBlock,
     ExtractionResult,
     LANGUAGE_CONFIGS,
@@ -157,6 +157,11 @@ class ParserManager:
                 lang = getattr(lang_module, language.upper(), None)
                 if lang is None:
                     raise AttributeError(f"Cannot find language in {package_name}")
+            
+            # tree-sitter >= 0.22.0 requires wrapping PyCapsule in Language
+            if type(lang).__name__ == "PyCapsule":
+                from tree_sitter import Language
+                lang = Language(lang)
             
             self._languages[language] = lang
             return lang
